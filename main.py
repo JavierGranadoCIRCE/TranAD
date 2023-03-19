@@ -16,6 +16,7 @@ from time import time
 from pprint import pprint
 # from beepy import beep
 from torchviz import make_dot
+import dagshub
 
 import os
 os.environ["PATH"] += os.pathsep + 'C:/Users/jelia/anaconda3/envs/GANs/Library/bin/graphviz/'

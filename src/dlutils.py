@@ -251,6 +251,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt = tgt + self.dropout3(tgt2)
         return tgt
 
+
 class ComputeLoss:
     def __init__(self, model, lambda_energy, lambda_cov, device, n_gmm):
         self.model = model
