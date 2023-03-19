@@ -160,6 +160,7 @@ def load_data(dataset):
 		dataset_folder = 'data/CIRCE/Sin fundamental'
 		prefalta = np.load(os.path.join(dataset_folder, f'DB_CT802_PulsoPrefalta_4000.npz'))
 		register = prefalta['tipos']
+
 		# SIN FILTRAR LA FUNDAMENTAL
 		#dataset_folder = 'data/CIRCE/CSV'
 		#file = os.path.join(dataset_folder, 'PF_P_Error2.csv')
@@ -178,22 +179,33 @@ def load_data(dataset):
 		train, min_a, max_a = normalize3(train)
 
 		prefalta = np.load(os.path.join(dataset_folder, f'DB_CT802_PulsoFalta_4000.npz'))
-		register = prefalta['tipos'][1,:]
+		register = prefalta['tipos']
 		#R_falta=df['Fault R (V)']
 		#S_falta=df['Fault S (V)']
 		#T_falta=df['Fault T (V)']
 		#register = np.vstack((R_falta[52030:57030], S_falta[102030:107030], T_falta[152030:157030]))
-		R = register[:4000]
-		S = register[4000:8000]
-		T = register[8000:]
+		R = register[:, :4000].reshape((200,4000,1))
+		S = register[:, 4000:8000].reshape((200,4000,1))
+		T = register[:, 8000:].reshape((200,4000,1))
 
-		register = np.vstack((R, S, T))
-		test = np.transpose(register)
-		test, _, _ = normalize3(test, min_a, max_a)
+		total = np.concatenate((R, S, T), axis=2)
+
+		for i in range(total.shape[0]):
+			total[i, :, :], _, _ = normalize3(total[i, :, :])
 
 		labels = np.zeros((4000,3))
 		np.save(f'{folder}/CIRCE_train.npy', train)
-		np.save(f'{folder}/CIRCE_test.npy', test)
+		np.save(f'{folder}/CIRCE_test.npy', total)
+
+		dataset_folder = 'data/CIRCE/'
+		file = os.path.join(dataset_folder, f'ResumenBloqueSimulaciones1-200.csv')
+		df = pd.read_csv(file)
+		ft = df['Fault_time[us]']
+		labels = np.zeros((200,4000,3))
+		for i in range(200):
+			ini = int(ft[i]/0.01)-25
+			if ini<0: ini=0
+			labels[i,ini:ini+5,:] = np.ones((5,3))
 		np.save(f'{folder}/CIRCE_labels.npy', labels)
 	elif dataset == 'WADI':
 		dataset_folder = 'data/WADI'

@@ -1,6 +1,7 @@
 import pickle
 import os
 import pandas as pd
+import torch.onnx
 from tqdm import tqdm
 from src.models import *
 from src.constants import *
@@ -14,16 +15,20 @@ import torch.nn as nn
 from time import time
 from pprint import pprint
 # from beepy import beep
+from torchviz import make_dot
+
+import os
+os.environ["PATH"] += os.pathsep + 'C:/Users/jelia/anaconda3/envs/GANs/Library/bin/graphviz/'
 
 def convert_to_windows(data, model):
 	windows = []; w_size = model.n_window
 	for i, g in enumerate(data): 
 		if i >= w_size: w = data[i-w_size:i]
 		else: w = torch.cat([data[0].repeat(w_size-i, 1), data[0:i]])
-		windows.append(w if 'TranAD' in args.model or 'Attention' in args.model else w.view(-1))
+		windows.append(w if 'TranAD' or 'TranCIRCE' in args.model or 'Attention' in args.model else w.view(-1))
 	return torch.stack(windows)
 
-def load_dataset(dataset):
+def load_dataset(dataset, idx):
 	folder = os.path.join(output_folder, dataset)
 	if not os.path.exists(folder):
 		raise Exception('Processed Data not found.')
@@ -39,8 +44,14 @@ def load_dataset(dataset):
 	# loader = [i[:, debug:debug+1] for i in loader]
 	if args.less: loader[0] = cut_array(0.2, loader[0])
 	train_loader = DataLoader(loader[0], batch_size=loader[0].shape[0])
-	test_loader = DataLoader(loader[1], batch_size=loader[1].shape[0])
-	labels = loader[2]
+	if dataset == 'CIRCE':
+		test_loader = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[1])
+		labels = loader[2][idx,:,:]
+	else:
+		test_loader = DataLoader(loader[1], batch_size=loader[1].shape[0])
+		labels = loader[2]
+
+
 	return train_loader, test_loader, labels
 
 def save_model(model, optimizer, scheduler, epoch, accuracy_list):
@@ -74,7 +85,7 @@ def load_model(modelname, dims):
 		epoch = -1; accuracy_list = []
 	return model, optimizer, scheduler, epoch, accuracy_list
 
-def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True):
+def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, dataTest = None):
 	l = nn.MSELoss(reduction = 'mean' if training else 'none')
 	feats = dataO.shape[1]
 	if 'DAGMM' in model.name:
@@ -262,6 +273,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True):
 				window = d.permute(1, 0, 2)
 				elem = window[-1, :, :].view(1, local_bs, feats)
 				z = model(window, elem)
+				#g = make_dot(z, params=dict(model.named_parameters()), show_saved=True).render("tranAD", format="png")
 				l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
 				if isinstance(z, tuple): z = z[1]
 				l1s.append(torch.mean(l1).item())
@@ -269,6 +281,54 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True):
 				optimizer.zero_grad()
 				loss.backward(retain_graph=True)
 				optimizer.step()
+			scheduler.step()
+			tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
+			return np.mean(l1s), optimizer.param_groups[0]['lr']
+		else:
+			for d, _ in dataloader:
+				window = d.permute(1, 0, 2)
+				elem = window[-1, :, :].view(1, bs, feats)
+				z = model(window, elem)
+				if isinstance(z, tuple): z = z[1]
+			loss = l(z, elem)[0]
+			return loss.detach().numpy(), z.detach().numpy()[0]
+	elif 'TranCIRCE' in model.name:
+		l = nn.MSELoss(reduction = 'none')
+		data_x = torch.DoubleTensor(data); dataset = TensorDataset(data_x, data_x)
+		if dataTest is not None:
+			data_test_x = torch.DoubleTensor(dataTest); dataset_test = TensorDataset(data_test_x, data_test_x)
+		bs = model.batch if training else len(data)
+		dataloader = DataLoader(dataset, batch_size = bs)
+		if dataTest is not None:
+			dataloader_test = DataLoader(dataset_test, batch_size= bs)
+		n = epoch + 1; w_size = model.n_window
+		l1s, l2s = [], []
+		if training:
+			for d, _ in dataloader:
+				local_bs = d.shape[0]
+				window = d.permute(1, 0, 2)
+				elem = window[-1, :, :].view(1, local_bs, feats)
+				z = model(window, elem, 0)
+				l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
+				if isinstance(z, tuple): z = z[1]
+				l1s.append(torch.mean(l1).item())
+				loss = torch.mean(l1)
+				optimizer.zero_grad()
+				loss.backward(retain_graph=True)
+				optimizer.step()
+			if dataTest is not None:
+				for d, _ in dataloader_test:
+					local_bs = d.shape[0]
+					window = d.permute(1, 0, 2)
+					elem = window[-1, :, :].view(1, local_bs, feats)
+					z = model(window, elem, 1)
+					l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
+					if isinstance(z, tuple): z = z[1]
+					l1s.append(torch.mean(l1).item())
+					loss = torch.mean(l1)
+					optimizer.zero_grad()
+					loss.backward(retain_graph=True)
+					optimizer.step()
 			scheduler.step()
 			tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
 			return np.mean(l1s), optimizer.param_groups[0]['lr']
@@ -294,7 +354,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True):
 			return loss.detach().numpy(), y_pred.detach().numpy()
 
 if __name__ == '__main__':
-	train_loader, test_loader, labels = load_dataset(args.dataset)
+	train_loader, test_loader, labels = load_dataset(args.dataset, 35)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
 	model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, labels.shape[1])
@@ -302,15 +362,15 @@ if __name__ == '__main__':
 	## Prepare data
 	trainD, testD = next(iter(train_loader)), next(iter(test_loader))
 	trainO, testO = trainD, testD
-	if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN'] or 'TranAD' in model.name: 
+	if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN', 'TranCIRCE'] or 'TranAD' in model.name:
 		trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
 
 	### Training phase
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-		num_epochs = 5; e = epoch + 1; start = time()
+		num_epochs = 50; e = epoch + 1; start = time()
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
-			lossT, lr = backprop(e, model, trainD, trainO, optimizer, scheduler)
+			lossT, lr = backprop(e, model, trainD, trainO, optimizer, scheduler, dataTest= testD)
 			accuracy_list.append((lossT, lr))
 		print(color.BOLD+'Training time: '+"{:10.4f}".format(time()-start)+' s'+color.ENDC)
 		save_model(model, optimizer, scheduler, e, accuracy_list)
