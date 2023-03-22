@@ -366,7 +366,7 @@ if __name__ == '__main__':
 	if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN', 'TranCIRCE'] or 'TranAD' in model.name:
 		trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
 
-	plotDiff(f'{args.model}_{args.dataset}', testD[:,0,:], trainD[:,0,:], labels)
+	plotDiff(f'{args.model}_{args.dataset}', testD[:,-1,:], trainD[:,-1,:], labels)
 
 	### Training phase
 	if not args.test:
