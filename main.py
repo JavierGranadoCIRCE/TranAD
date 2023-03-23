@@ -55,6 +55,7 @@ def load_dataset(dataset, idx):
 
 	return train_loader, test_loader, labels
 
+
 def save_model(model, optimizer, scheduler, epoch, accuracy_list):
 	folder = f'checkpoints/{args.model}_{args.dataset}/'
 	os.makedirs(folder, exist_ok=True)
@@ -66,11 +67,12 @@ def save_model(model, optimizer, scheduler, epoch, accuracy_list):
         'scheduler_state_dict': scheduler.state_dict(),
         'accuracy_list': accuracy_list}, file_path)
 
+
 def load_model(modelname, dims):
 	import src.models
 	model_class = getattr(src.models, modelname)
 	model = model_class(dims).double()
-	optimizer = torch.optim.AdamW(model.parameters() , lr=model.lr, weight_decay=1e-5)
+	optimizer = torch.optim.AdamW(model.parameters(), lr=model.lr, weight_decay=1e-5)
 	scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 5, 0.9)
 	fname = f'checkpoints/{args.model}_{args.dataset}/model.ckpt'
 	if os.path.exists(fname) and (not args.retrain or args.test):
@@ -85,6 +87,7 @@ def load_model(modelname, dims):
 		print(f"{color.GREEN}Creating new model: {model.name}{color.ENDC}")
 		epoch = -1; accuracy_list = []
 	return model, optimizer, scheduler, epoch, accuracy_list
+
 
 def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, dataTest = None):
 	l = nn.MSELoss(reduction = 'mean' if training else 'none')
@@ -339,7 +342,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 				elem = window[-1, :, :].view(1, bs, feats)
 				z = model(window, elem)
 				if isinstance(z, tuple): z = z[1]
-			loss = l(z, elem)[0]
+			loss = l(torch.abs(z-0.5), torch.abs(dataO-0.5))[0] #0.5*l(z[0], dataO)[0] + 0.5*l(z[1], dataO)[0]
 			return loss.detach().numpy(), z.detach().numpy()[0]
 	else:
 		y_pred = model(data)
@@ -355,7 +358,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 			return loss.detach().numpy(), y_pred.detach().numpy()
 
 if __name__ == '__main__':
-	train_loader, test_loader, labels = load_dataset(args.dataset, 35)
+	train_loader, test_loader, labels = load_dataset(args.dataset, 5)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
 	model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, labels.shape[1])
@@ -371,9 +374,9 @@ if __name__ == '__main__':
 	### Training phase
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-		num_epochs = 50; e = epoch + 1; start = time()
+		num_epochs = 150; e = epoch + 1; start = time()
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
-			lossT, lr = backprop(e, model, trainD, trainO, optimizer, scheduler, dataTest= None)
+			lossT, lr = backprop(e, model, trainD, trainO, optimizer, scheduler, dataTest= testD)
 			accuracy_list.append((lossT, lr))
 		print(color.BOLD+'Training time: '+"{:10.4f}".format(time()-start)+' s'+color.ENDC)
 		save_model(model, optimizer, scheduler, e, accuracy_list)
@@ -383,31 +386,31 @@ if __name__ == '__main__':
 	torch.zero_grad = True
 	model.eval()
 	print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
-	loss, y_pred = backprop(0, model, testD, testO, optimizer, scheduler, training=False)
+	loss, y_pred = backprop(0, model, trainD, testO, optimizer, scheduler, training=False)
 
 	### Plot curves
-	if not args.test:
+	if args.test:
 		if 'TranAD' in model.name: testO = torch.roll(testO, 1, 0) 
 		plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
 
 	### Scores
-	df = pd.DataFrame()
-	lossT, _ = backprop(0, model, trainD, trainO, optimizer, scheduler, training=False)
-	for i in range(loss.shape[1]):
-		lt, l, ls = lossT[:, i], loss[:, i], labels[:, i]
-		result, pred = pot_eval(lt, l, ls); preds.append(pred)
-		#df = pd.concat([df, result])
-		df = df.append(result, ignore_index=True)
-	# preds = np.concatenate([i.reshape(-1, 1) + 0 for i in preds], axis=1)
-	# pd.DataFrame(preds, columns=[str(i) for i in range(10)]).to_csv('labels.csv')
-	lossTfinal, lossFinal = np.mean(lossT, axis=1), np.mean(loss, axis=1)
-	labelsFinal = (np.sum(labels, axis=1) >= 1) + 0
-	result, _ = pot_eval(lossTfinal, lossFinal, labelsFinal)
-	result.update(hit_att(loss, labels))
-	result.update(ndcg(loss, labels))
-	print(df)
-	pprint(result)
-	# pprint(getresults2(df, result))
-	# beep(4)
+	# df = pd.DataFrame()
+	# lossT, _ = backprop(0, model, trainD, trainO, optimizer, scheduler, training=False)
+	# for i in range(loss.shape[1]):
+	# 	lt, l, ls = lossT[:, i], loss[:, i], labels[:, i]
+	# 	result, pred = pot_eval(lt, l, ls); preds.append(pred)
+	# 	#df = pd.concat([df, result])
+	# 	df = df.append(result, ignore_index=True)
+	# # preds = np.concatenate([i.reshape(-1, 1) + 0 for i in preds], axis=1)
+	# # pd.DataFrame(preds, columns=[str(i) for i in range(10)]).to_csv('labels.csv')
+	# lossTfinal, lossFinal = np.mean(lossT, axis=1), np.mean(loss, axis=1)
+	# labelsFinal = (np.sum(labels, axis=1) >= 1) + 0
+	# result, _ = pot_eval(lossTfinal, lossFinal, labelsFinal)
+	# result.update(hit_att(loss, labels))
+	# result.update(ndcg(loss, labels))
+	# print(df)
+	# pprint(result)
+	# # pprint(getresults2(df, result))
+	# # beep(4)
 
 #%%
