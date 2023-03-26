@@ -308,9 +308,9 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 		n = epoch + 1; w_size = model.n_window
 		l1s, l2s = [], []
 		if training:
-			for d, _ in dataloader:
-				local_bs = d.shape[0]
-				window = d.permute(1, 0, 2)
+			for d1, _ in dataloader:
+				local_bs = d1.shape[0]
+				window = d1.permute(1, 0, 2)
 				elem = window[-1, :, :].view(1, local_bs, feats)
 				z = model(window, elem, 0)
 				l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
@@ -320,19 +320,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 				optimizer.zero_grad()
 				loss.backward(retain_graph=True)
 				optimizer.step()
-			if dataTest is not None:
-				for d, _ in dataloader_test:
-					local_bs = d.shape[0]
-					window = d.permute(1, 0, 2)
-					elem = window[-1, :, :].view(1, local_bs, feats)
-					z = model(window, elem, 1)
-					l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
-					if isinstance(z, tuple): z = z[1]
-					l1s.append(torch.mean(l1).item())
-					loss = torch.mean(l1)
-					optimizer.zero_grad()
-					loss.backward(retain_graph=True)
-					optimizer.step()
+
 			scheduler.step()
 			tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
 			return np.mean(l1s), optimizer.param_groups[0]['lr']
@@ -342,6 +330,9 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 				elem = window[-1, :, :].view(1, bs, feats)
 				z = model(window, elem)
 				if isinstance(z, tuple): z = z[1]
+
+			with torch.no_grad():
+				plotDiff(f'.', torch.abs(z-0.5)[0,:,:], torch.abs(dataO-0.5), labels)
 			loss = l(torch.abs(z-0.5), torch.abs(dataO-0.5))[0] #0.5*l(z[0], dataO)[0] + 0.5*l(z[1], dataO)[0]
 			return loss.detach().numpy(), z.detach().numpy()[0]
 	else:
