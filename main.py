@@ -308,18 +308,46 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 		n = epoch + 1; w_size = model.n_window
 		l1s, l2s = [], []
 		if training:
-			for d1, _ in dataloader:
-				local_bs = d1.shape[0]
-				window = d1.permute(1, 0, 2)
-				elem = window[-1, :, :].view(1, local_bs, feats)
-				z = model(window, elem, 0)
-				l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
-				if isinstance(z, tuple): z = z[1]
-				l1s.append(torch.mean(l1).item())
-				loss = torch.mean(l1)
-				optimizer.zero_grad()
-				loss.backward(retain_graph=True)
-				optimizer.step()
+			if dataTest is not None:
+				for d1, d2 in zip(dataloader, dataloader_test):
+					d1 = d1[0]
+					local_bs = d1.shape[0]
+					window = d1.permute(1, 0, 2)
+					elem = window[-1, :, :].view(1, local_bs, feats)
+					z = model(window, elem, 0)
+					l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
+					if isinstance(z, tuple): z = z[1]
+					l1s.append(torch.mean(l1).item())
+					loss = torch.mean(l1)
+					optimizer.zero_grad()
+					loss.backward(retain_graph=True)
+					optimizer.step()
+
+					d1 = d2[0]
+					local_bs = d1.shape[0]
+					window = d1.permute(1, 0, 2)
+					elem = window[-1, :, :].view(1, local_bs, feats)
+					z = model(window, elem, 1)
+					l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
+					if isinstance(z, tuple): z = z[1]
+					l1s.append(torch.mean(l1).item())
+					loss = torch.mean(l1)
+					optimizer.zero_grad()
+					loss.backward(retain_graph=True)
+					optimizer.step()
+			else:
+				for d1, _ in dataloader:
+					local_bs = d1.shape[0]
+					window = d1.permute(1, 0, 2)
+					elem = window[-1, :, :].view(1, local_bs, feats)
+					z = model(window, elem, 0)
+					l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
+					if isinstance(z, tuple): z = z[1]
+					l1s.append(torch.mean(l1).item())
+					loss = torch.mean(l1)
+					optimizer.zero_grad()
+					loss.backward(retain_graph=True)
+					optimizer.step()
 
 			scheduler.step()
 			tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
