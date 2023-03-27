@@ -10,6 +10,7 @@ from torch.nn import TransformerEncoder
 from torch.nn import TransformerDecoder
 from src.dlutils import *
 from src.constants import *
+import matplotlib.pyplot as plt
 torch.manual_seed(1)
 
 ## Separate LSTM for each variable
@@ -555,6 +556,8 @@ class TranCIRCE(nn.Module):
 		# Phase 1 - Without anomaly scores
 		c = torch.zeros_like(src)
 		x1 = self.fcn(self.transformer_decoder1(*self.encode(src, c, tgt)))
+
+
 		# Phase 2 - With anomaly scores
 		if label == 0:
 			c = (x1 - src) ** 2
@@ -562,4 +565,9 @@ class TranCIRCE(nn.Module):
 			v_margin = torch.from_numpy(np.ones_like(src)*self.margin)
 			c = torch.clamp(v_margin - (x1 - src), min=0.0) ** 2
 		x2 = self.fcn(self.transformer_decoder2(*self.encode(src, c, tgt)))
+
+		# fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+		# ax1.plot(x1.detach().numpy()[0,:,:], linewidth=0.2, label='X1')
+		# ax2.plot(x2.detach().numpy()[0,:,:], linewidth=0.2, color='g', label='X2')
+		# plt.show()
 		return x1, x2
