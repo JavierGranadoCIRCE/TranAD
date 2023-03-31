@@ -411,7 +411,7 @@ if __name__ == '__main__':
 	### Plot curves
 	if args.test:
 		if 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
-		plotter(f'{args.model}_{args.dataset}', trainO, y_pred, loss, labels)
+		plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
 
 	### Scores
 	# df = pd.DataFrame()
