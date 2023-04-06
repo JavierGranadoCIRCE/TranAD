@@ -475,6 +475,7 @@ if __name__ == '__main__':
 
 	plotDiff(f'{args.model}_{args.dataset}', testD[:,-1,:], trainD[:,-1,:], labels)
 
+
 	### Training phase
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
