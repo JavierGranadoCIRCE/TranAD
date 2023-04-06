@@ -26,7 +26,7 @@ def convert_to_windows(data, model):
 	for i, g in enumerate(data): 
 		if i >= w_size: w = data[i-w_size:i]
 		else: w = torch.cat([data[0].repeat(w_size-i, 1), data[0:i]])
-		windows.append(w if 'TranAD' or 'TranCIRCE' in args.model or 'Attention' in args.model else w.view(-1))
+		windows.append(w if 'TranAD' or 'TranCIRCE' or 'OSContrastiveTransformer' in args.model or 'Attention' in args.model else w.view(-1))
 	return torch.stack(windows)
 
 def load_dataset(dataset, idx):
@@ -56,15 +56,17 @@ def load_dataset(dataset, idx):
 	return train_loader, test_loader, labels
 
 
-def save_model(model, optimizer, scheduler, epoch, accuracy_list):
+def save_model(model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list):
 	folder = f'checkpoints/{args.model}_{args.dataset}/'
 	os.makedirs(folder, exist_ok=True)
 	file_path = f'{folder}/model.ckpt'
 	torch.save({
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
+        'optimizer1_state_dict': optimizer1.state_dict(),
+		'optimizer2_state_dict': optimizer2.state_dict(),
+        'scheduler1_state_dict': scheduler1.state_dict(),
+		'scheduler2_state_dict': scheduler2.state_dict(),
         'accuracy_list': accuracy_list}, file_path)
 
 
@@ -72,24 +74,30 @@ def load_model(modelname, dims):
 	import src.models
 	model_class = getattr(src.models, modelname)
 	model = model_class(dims).double()
-	optimizer = torch.optim.AdamW(model.parameters(), lr=model.lr, weight_decay=1e-5)
-	scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 5, 0.9)
+	optimizer1 = torch.optim.AdamW(list(model.transformer_encoder.parameters()) +
+								   list(model.transformer_decoder1.parameters()) +
+								   list(model.fcn1.parameters()), lr=model.lr, weight_decay=1e-5)
+	optimizer2 = torch.optim.AdamW(list(model.fcn1.parameters()), lr=model.lr, weight_decay=1e-5)
+	scheduler1 = torch.optim.lr_scheduler.StepLR(optimizer1, 5, 0.9)
+	scheduler2 = torch.optim.lr_scheduler.StepLR(optimizer2, 5, 0.9)
 	fname = f'checkpoints/{args.model}_{args.dataset}/model.ckpt'
 	if os.path.exists(fname) and (not args.retrain or args.test):
 		print(f"{color.GREEN}Loading pre-trained model: {model.name}{color.ENDC}")
 		checkpoint = torch.load(fname)
 		model.load_state_dict(checkpoint['model_state_dict'])
-		optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-		scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+		optimizer1.load_state_dict(checkpoint['optimizer1_state_dict'])
+		optimizer2.load_state_dict(checkpoint['optimizer2_state_dict'])
+		scheduler1.load_state_dict(checkpoint['scheduler1_state_dict'])
+		scheduler2.load_state_dict(checkpoint['scheduler2_state_dict'])
 		epoch = checkpoint['epoch']
 		accuracy_list = checkpoint['accuracy_list']
 	else:
 		print(f"{color.GREEN}Creating new model: {model.name}{color.ENDC}")
 		epoch = -1; accuracy_list = []
-	return model, optimizer, scheduler, epoch, accuracy_list
+	return model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list
 
 
-def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, dataTest = None):
+def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, scheduler2, training = True, dataTest = None):
 	l = nn.MSELoss(reduction = 'mean' if training else 'none')
 	feats = dataO.shape[1]
 	if 'DAGMM' in model.name:
@@ -311,7 +319,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 			if dataTest is not None:
 				for d1, d2 in zip(dataloader, dataloader_test):
 					d1 = d1[0]
-					
+
 					local_bs = d1.shape[0]
 					window = d1.permute(1, 0, 2)
 					elem = window[-1, :, :].view(1, local_bs, feats)
@@ -362,8 +370,84 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True, d
 
 			with torch.no_grad():
 				plotDiff(f'.', torch.abs(z-0.5)[0,:,:], torch.abs(dataO-0.5), labels)
-			loss = l(torch.abs(z-0.5), torch.abs(dataO-0.5))[0] #0.5*l(z[0], dataO)[0] + 0.5*l(z[1], dataO)[0]
+			loss = l(z, dataO)[0] #0.5*l(z[0], dataO)[0] + 0.5*l(z[1], dataO)[0]
 			return loss.detach().numpy(), z.detach().numpy()[0]
+	elif 'OSContrastiveTransformer' in model.name:
+		loss1 = nn.MSELoss(reduction = 'none')
+		loss2 = nn.MSELoss(reduction = 'none')
+		data_x = torch.DoubleTensor(data); dataset = TensorDataset(data_x, data_x)
+		if dataTest is not None:
+			data_test_x = torch.DoubleTensor(dataTest); dataset_test = TensorDataset(data_test_x, data_test_x)
+		bs = model.batch if training else len(data)
+		dataloader = DataLoader(dataset, batch_size = bs)
+		if dataTest is not None:
+			dataloader_test = DataLoader(dataset_test, batch_size= bs)
+		n = epoch + 1; w_size = model.n_window
+		l1s, l2s = [], []
+		if training:
+			if dataTest is not None:
+				for d1, d2 in zip(dataloader, dataloader_test):
+					d1 = d1[0]
+
+					local_bs = d1.shape[0]
+					window = d1.permute(1, 0, 2)
+					elem = window[-1, :, :].view(1, local_bs, feats)
+					elems = elem
+					z = model(window, elem, 0)
+					l1 = torch.mean(loss1(z, elem)[0])
+					optimizer.zero_grad()
+					l1.backward(retain_graph=True)
+
+					d1 = d2[0]
+					local_bs = d1.shape[0]
+					window = d1.permute(1, 0, 2)
+					elem = window[-1, :, :].view(1, local_bs, feats)
+					z1 = model(window, elem, 1, z)
+
+					lossFalta = loss2(z1[1], elems)[0]
+					v_margin = torch.from_numpy(np.ones_like(lossFalta.detach().numpy())*0.5)
+					# 	c = torch.clamp(v_margin - (x1 - src), min=0.0) ** 2
+
+					l2 = torch.mean(loss2(z1[0], elem)[0]) + torch.mean(torch.clamp(v_margin - lossFalta, min=0.0) ** 2)
+					optimizer2.zero_grad()
+					torch.autograd.set_detect_anomaly(True)
+					l2.backward(retain_graph=True)
+
+					optimizer.step()
+					optimizer2.step()
+
+					l1s.append(l1.item())
+					l2s.append(l2.item())
+			else:
+				for d1, _ in dataloader:
+					local_bs = d1.shape[0]
+					window = d1.permute(1, 0, 2)
+					elem = window[-1, :, :].view(1, local_bs, feats)
+					z = model(window, elem, 0)
+					l1 = l(z, elem) if not isinstance(z, tuple) else (1 / n) * l(z[0], elem) + (1 - 1/n) * l(z[1], elem)
+					if isinstance(z, tuple): z = z[1]
+					l1s.append(torch.mean(l1).item())
+					loss = torch.mean(l1)
+					optimizer.zero_grad()
+					loss.backward(retain_graph=True)
+					optimizer.step()
+
+			scheduler1.step()
+			scheduler2.step()
+			tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}, \tL2 = {np.mean(l2s)}')
+			return np.mean(l1s), optimizer.param_groups[0]['lr']
+		else:
+			for d1, d2 in zip(dataloader, dataloader_test):
+				d1 = d1[0]
+				window1 = d1.permute(1, 0, 2)
+				d2 = d2[0]
+				window2 = d2.permute(1, 0, 2)
+				elem = window2[-1, :, :].view(1, bs, feats)
+				z1 = model(window1, elem, 0)
+				z = model(window1, elem, 1, z1)
+
+			loss = l(z[0], z[1])[0]
+			return loss.detach().numpy(), z[1].detach().numpy()[0]
 	else:
 		y_pred = model(data)
 		loss = l(y_pred, data)
@@ -381,12 +465,12 @@ if __name__ == '__main__':
 	train_loader, test_loader, labels = load_dataset(args.dataset, 5)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
-	model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, labels.shape[1])
+	model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list = load_model(args.model, labels.shape[1])
 
 	## Prepare data
 	trainD, testD = next(iter(train_loader)), next(iter(test_loader))
 	trainO, testO = trainD, testD
-	if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN', 'TranCIRCE'] or 'TranAD' in model.name:
+	if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN', 'TranCIRCE'] or 'TranAD' or 'OSContrastiveTransformer' in model.name:
 		trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
 
 	plotDiff(f'{args.model}_{args.dataset}', testD[:,-1,:], trainD[:,-1,:], labels)
@@ -394,19 +478,19 @@ if __name__ == '__main__':
 	### Training phase
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-		num_epochs = 150; e = epoch + 1; start = time()
+		num_epochs = 50; e = epoch + 1; start = time()
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
-			lossT, lr = backprop(e, model, trainD, trainO, optimizer, scheduler, dataTest=testD)
+			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD)
 			accuracy_list.append((lossT, lr))
 		print(color.BOLD+'Training time: '+"{:10.4f}".format(time()-start)+' s'+color.ENDC)
-		save_model(model, optimizer, scheduler, e, accuracy_list)
+		save_model(model, optimizer1, optimizer2, scheduler1, scheduler2, e, accuracy_list)
 		plot_accuracies(accuracy_list, f'{args.model}_{args.dataset}/TrainWithTest')
 
 	### Testing phase
 	torch.zero_grad = True
 	model.eval()
 	print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
-	loss, y_pred = backprop(0, model, trainD, testO, optimizer, scheduler, training=False)
+	loss, y_pred = backprop(0, model, trainD, testO, optimizer1, optimizer2, scheduler1, scheduler2, training=False, dataTest=testD)
 
 	### Plot curves
 	if args.test:
