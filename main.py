@@ -74,10 +74,9 @@ def load_model(modelname, dims):
 	import src.models
 	model_class = getattr(src.models, modelname)
 	model = model_class(dims).double()
-	optimizer1 = torch.optim.AdamW(list(model.transformer_encoder.parameters()) +
-								   list(model.transformer_decoder1.parameters()) +
+	optimizer1 = torch.optim.AdamW(list(model.transformer_encoder.parameters()) + list(model.transformer_decoder1.parameters()) +
 								   list(model.fcn1.parameters()), lr=model.lr, weight_decay=1e-5)
-	optimizer2 = torch.optim.AdamW(list(model.fcn1.parameters()), lr=model.lr, weight_decay=1e-5)
+	optimizer2 = torch.optim.AdamW(list(model.transformer_decoder2.parameters()) + list(model.fcn2.parameters()), lr=model.lr, weight_decay=1e-5)
 	scheduler1 = torch.optim.lr_scheduler.StepLR(optimizer1, 5, 0.9)
 	scheduler2 = torch.optim.lr_scheduler.StepLR(optimizer2, 5, 0.9)
 	fname = f'checkpoints/{args.model}_{args.dataset}/model.ckpt'

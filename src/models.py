@@ -605,7 +605,7 @@ class OSContrastiveTransformer(nn.Module):
 		# Phase 2 - With anomaly scores
 		if phase == 1:
 			c = (x1 - src) ** 2
-			x2 = self.fcn2(self.transformer_decoder1(*self.encode(src, c, tgt)))
+			x2 = self.fcn2(self.transformer_decoder2(*self.encode(src, c, tgt)))
 			return x1, x2
 
 		# # Phase 2 - With anomaly scores
