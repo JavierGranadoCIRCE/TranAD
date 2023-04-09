@@ -444,9 +444,14 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 				elem = window2[-1, :, :].view(1, bs, feats)
 				z1 = model(window1, elem, 0)
 				z = model(window1, elem, 1, z1)
+				if isinstance(z, tuple): z = z[1]
+				if isinstance(z1, tuple): z1 = z1[1]
+			with torch.no_grad():
+				plotDiff(f'.', torch.abs(z-0.5)[0,:,:], torch.abs(dataO-0.5), labels)
 
-			loss = l(z[0], z[1])[0]
-			return loss.detach().numpy(), z[1].detach().numpy()[0]
+			loss = phase_syncrony(z, dataO)
+			#loss = l(z[0], z[1])[0]
+			return loss.detach().numpy(), z.detach().numpy()[0]
 	else:
 		y_pred = model(data)
 		loss = l(y_pred, data)
