@@ -17,6 +17,7 @@ from pprint import pprint
 # from beepy import beep
 from torchviz import make_dot
 import dagshub
+import random
 
 import os
 os.environ["PATH"] += os.pathsep + 'C:/Users/jelia/anaconda3/envs/GANs/Library/bin/graphviz/'
@@ -46,15 +47,42 @@ def load_dataset(dataset, idx):
 	if args.less: loader[0] = cut_array(0.2, loader[0])
 	train_loader = DataLoader(loader[0], batch_size=loader[0].shape[0])
 	if dataset == 'CIRCE':
-		test_loader = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[1])
-		labels = loader[2][idx,:,:]
+		random_idx = random.randint(0, 199)
+		test_loader = DataLoader(loader[1][random_idx,:,:], batch_size=loader[1].shape[1])
+		labels = loader[2][random_idx,:,:]
 	else:
-		test_loader = DataLoader(loader[1], batch_size=loader[1].shape[0])
+		test_loader = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[0])
 		labels = loader[2]
 
 
 	return train_loader, test_loader, labels
 
+def load_dataset_test(dataset, idx):
+	folder = os.path.join(output_folder, dataset)
+	if not os.path.exists(folder):
+		raise Exception('Processed Data not found.')
+	loader = []
+	for file in ['train', 'test', 'labels']:
+		if dataset == 'SMD': file = 'machine-1-1_' + file
+		if dataset == 'SMAP': file = 'P-1_' + file
+		if dataset == 'MSL': file = 'C-1_' + file
+		if dataset == 'UCR': file = '136_' + file
+		if dataset == 'NAB': file = 'ec2_request_latency_system_failure_' + file
+		if dataset == 'CIRCE': file = 'CIRCE_' + file
+		loader.append(np.load(os.path.join(folder, f'{file}.npy')))
+	# loader = [i[:, debug:debug+1] for i in loader]
+	if args.less: loader[0] = cut_array(0.2, loader[0])
+	train_loader = DataLoader(loader[0], batch_size=loader[0].shape[0])
+	if dataset == 'CIRCE':
+		random_idx = random.randint(0, 199)
+		test_loader_test = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[1])
+		labels = loader[2][idx,:,:]
+	else:
+		test_loader_test = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[0])
+		labels = loader[2][idx,:,:]
+
+
+	return train_loader, test_loader_test, labels
 
 def save_model(model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list):
 	folder = f'checkpoints/{args.model}_{args.dataset}/'
@@ -468,12 +496,13 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 
 if __name__ == '__main__':
 	train_loader, test_loader, labels = load_dataset(args.dataset, 5)
+	train_loader, test_loader_test, labels = load_dataset_test(args.dataset, 5)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
 	model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list = load_model(args.model, labels.shape[1])
 
 	## Prepare data
-	trainD, testD = next(iter(train_loader)), next(iter(test_loader))
+	trainD, testD, testDtest = next(iter(train_loader)), next(iter(test_loader)), next(iter(test_loader_test))
 	trainO, testO = trainD, testD
 	if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN', 'TranCIRCE'] or 'TranAD' or 'OSContrastiveTransformer' in model.name:
 		trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
@@ -496,7 +525,7 @@ if __name__ == '__main__':
 	torch.zero_grad = True
 	model.eval()
 	print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
-	loss, y_pred = backprop(0, model, trainD, testO, optimizer1, optimizer2, scheduler1, scheduler2, training=False, dataTest=testD)
+	loss, y_pred = backprop(0, model, trainD, testDtest, optimizer1, optimizer2, scheduler1, scheduler2, training=False, dataTest=testD)
 
 	### Plot curves
 	if args.test:
