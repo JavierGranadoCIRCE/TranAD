@@ -441,13 +441,14 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 				window1 = d1.permute(1, 0, 2)
 				d2 = d2[0]
 				window2 = d2.permute(1, 0, 2)
+				elem1 = window1[-1, :, :].view(1, bs, feats)
 				elem = window2[-1, :, :].view(1, bs, feats)
-				z1 = model(window1, elem, 0)
-				z = model(window1, elem, 1, z1)
+				z = model(window1, elem1, 0)
+				z1 = model(window2, elem, 1, z)
 				if isinstance(z, tuple): z = z[1]
 				if isinstance(z1, tuple): z1 = z1[1]
 			with torch.no_grad():
-				plotDiff(f'.', torch.abs(z-0.5)[0,:,:], torch.abs(dataO-0.5), labels)
+				plotDiff(f'.', torch.abs(z-0.5)[0,:,:], torch.abs(z1-0.5)[0,:,:], labels)
 
 			loss = phase_syncrony(z, dataO)
 			#loss = l(z[0], z[1])[0]
