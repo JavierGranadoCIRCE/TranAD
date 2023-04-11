@@ -104,7 +104,7 @@ def load_model(modelname, dims):
 	model = model_class(dims).double()
 	optimizer1 = torch.optim.AdamW(list(model.transformer_encoder.parameters()) + list(model.transformer_decoder1.parameters()) +
 								   list(model.fcn1.parameters()), lr=model.lr, weight_decay=1e-5)
-	optimizer2 = torch.optim.AdamW(list(model.transformer_encoder.parameters()) + list(model.transformer_decoder2.parameters()) + list(model.fcn2.parameters()), lr=model.lr, weight_decay=1e-5)
+	optimizer2 = torch.optim.AdamW(list(model.transformer_decoder2.parameters()) + list(model.fcn2.parameters()), lr=model.lr, weight_decay=1e-5)
 	scheduler1 = torch.optim.lr_scheduler.StepLR(optimizer1, 5, 0.9)
 	scheduler2 = torch.optim.lr_scheduler.StepLR(optimizer2, 5, 0.9)
 	fname = f'checkpoints/{args.model}_{args.dataset}/model.ckpt'
@@ -414,30 +414,30 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 		if training:
 			if dataTest is not None:
 				for d1, d2 in zip(dataloader, dataloader_test):
-					d1 = d1[0]
+					prefalta = d1[0]
 
-					local_bs = d1.shape[0]
-					window = d1.permute(1, 0, 2)
+					local_bs = prefalta.shape[0]
+					window = prefalta.permute(1, 0, 2)
 					elem = window[-1, :, :].view(1, local_bs, feats)
-					elems = elem
+					windowClone = window.clone()
+					elemClone = elem.clone()
 					z = model(window, elem, 0)
 					l1 = torch.mean(loss1(z, elem)[0])
 					optimizer.zero_grad()
 					l1.backward(retain_graph=True)
 
-					d1 = d2[0]
-					local_bs = d1.shape[0]
-					window = d1.permute(1, 0, 2)
-					elem = window[-1, :, :].view(1, local_bs, feats)
-					z1 = model(window, elem, 1, z)
+					falta = d2[0]
+					local_bs = falta.shape[0]
+					window2 = falta.permute(1, 0, 2)
+					elem_falta = window2[-1, :, :].view(1, local_bs, feats)
+					z1 = model(windowClone, elem_falta, 1, z.clone())
 
-					lossFalta = loss2(z1[1], elems)[0]
-					v_margin = torch.from_numpy(np.ones_like(lossFalta.detach().numpy())*0.5)
+					lossFalta = loss2(z1[1], z.clone())[0]
+					v_margin = torch.from_numpy(np.ones_like(lossFalta.detach().numpy())*0)
 					# 	c = torch.clamp(v_margin - (x1 - src), min=0.0) ** 2
 
-					l2 = torch.mean(loss2(z1[0], elem)[0]) + torch.mean(torch.clamp(v_margin - lossFalta, min=0.0) ** 2)
+					l2 = torch.mean(loss2(z1[1], elem_falta)[0]) + torch.mean(torch.clamp(v_margin - lossFalta, min=0.0) ** 2)
 					optimizer2.zero_grad()
-					torch.autograd.set_detect_anomaly(True)
 					l2.backward(retain_graph=True)
 
 					optimizer.step()
@@ -478,9 +478,9 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 			with torch.no_grad():
 				plotDiff(f'.', torch.abs(z-0.5)[0,:,:], torch.abs(z1-0.5)[0,:,:], labels)
 
-			loss = phase_syncrony(z, dataO)
-			#loss = l(z[0], z[1])[0]
-			return loss.detach().numpy(), z.detach().numpy()[0]
+			loss = phase_syncrony(z, z1[0,:,:])
+			#loss = l(z, z1[0,:,:])[0]
+			return loss.detach().numpy(), z1.detach().numpy()[0]
 	else:
 		y_pred = model(data)
 		loss = l(y_pred, data)
@@ -496,7 +496,7 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 
 if __name__ == '__main__':
 	train_loader, test_loader, labels = load_dataset(args.dataset, 5)
-	train_loader, test_loader_test, labels = load_dataset_test(args.dataset, 5)
+	train_loader, test_loader_test, labels = load_dataset_test(args.dataset, 4)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
 	model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list = load_model(args.model, labels.shape[1])
@@ -513,7 +513,7 @@ if __name__ == '__main__':
 	### Training phase
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-		num_epochs = 50; e = epoch + 1; start = time()
+		num_epochs = 150; e = epoch + 1; start = time()
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
 			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD)
 			accuracy_list.append((lossT, lr))
@@ -530,7 +530,7 @@ if __name__ == '__main__':
 	### Plot curves
 	if args.test:
 		if 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
-		plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
+		plotter(f'{args.model}_{args.dataset}', trainO, y_pred, loss, labels)
 
 	### Scores
 	# df = pd.DataFrame()
