@@ -423,8 +423,8 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 					elemClone = elem.clone()
 					z = model(window, elem, 0)
 					l1 = torch.mean(loss1(z, elem)[0])
-					optimizer.zero_grad()
-					l1.backward(retain_graph=True)
+					optimizer1.zero_grad()
+					#l1.backward(retain_graph=True)
 
 					falta = d2[0]
 					local_bs = falta.shape[0]
@@ -432,15 +432,18 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 					elem_falta = window2[-1, :, :].view(1, local_bs, feats)
 					z1 = model(windowClone, elem_falta, 1, z.clone())
 
-					lossFalta = loss2(z1[1], z.clone())[0]
-					v_margin = torch.from_numpy(np.ones_like(lossFalta.detach().numpy())*0)
-					# 	c = torch.clamp(v_margin - (x1 - src), min=0.0) ** 2
-
-					l2 = torch.mean(loss2(z1[1], elem_falta)[0]) + torch.mean(torch.clamp(v_margin - lossFalta, min=0.0) ** 2)
+					l2 = torch.mean(torch.clamp(0.5 - loss2(z1[1],elem_falta)[0],min=0.0))
+					# lossFalta = loss2(z1[1], z.clone())[0]
+					# v_margin = torch.from_numpy(np.ones_like(lossFalta.detach().numpy())*0.5)
+					# # 	c = torch.clamp(v_margin - (x1 - src), min=0.0) ** 2
+					#
+					# l2 = torch.mean(loss2(z1[1], elem_falta)[0]) + torch.mean(torch.clamp(v_margin - lossFalta, min=0.0) ** 2)
 					optimizer2.zero_grad()
-					l2.backward(retain_graph=True)
+					#l2.backward(retain_graph=True)
 
-					optimizer.step()
+					(l1+l2).backward()
+
+					optimizer1.step()
 					optimizer2.step()
 
 					l1s.append(l1.item())
@@ -513,7 +516,7 @@ if __name__ == '__main__':
 	### Training phase
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-		num_epochs = 150; e = epoch + 1; start = time()
+		num_epochs = 50; e = epoch + 1; start = time()
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
 			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD)
 			accuracy_list.append((lossT, lr))
