@@ -43,7 +43,7 @@ def plotter(name, y_true, y_pred, ascore, labels):
 	pdf.close()
 
 def plotDiff(name, falta, prefalta, labels, idx = 0):
-	if 'TranAD' or 'TranCIRCE' in name: y_true = torch.roll(falta, 1, 0)
+	if 'TranAD' or 'TranCIRCE' or 'OSContrastiveTransformer' in name: y_true = torch.roll(falta, 1, 0)
 	os.makedirs(os.path.join('plots', name), exist_ok=True)
 	pdf = PdfPages(f'plots/{name}/diff.pdf')
 	for dim in tqdm(range(y_true.shape[1])):

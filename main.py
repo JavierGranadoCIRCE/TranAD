@@ -104,7 +104,7 @@ def load_model(modelname, dims):
 	model = model_class(dims).double()
 	optimizer1 = torch.optim.AdamW(list(model.transformer_encoder.parameters()) + list(model.transformer_decoder1.parameters()) +
 								   list(model.fcn1.parameters()), lr=model.lr, weight_decay=1e-5)
-	optimizer2 = torch.optim.AdamW(list(model.transformer_decoder2.parameters()) + list(model.fcn2.parameters()), lr=model.lr, weight_decay=1e-5)
+	optimizer2 = torch.optim.AdamW(list(model.fcn1.parameters()) + list(model.fcn2.parameters()), lr=model.lr, weight_decay=1e-5)
 	scheduler1 = torch.optim.lr_scheduler.StepLR(optimizer1, 5, 0.9)
 	scheduler2 = torch.optim.lr_scheduler.StepLR(optimizer2, 5, 0.9)
 	fname = f'checkpoints/{args.model}_{args.dataset}/model.ckpt'
@@ -124,7 +124,12 @@ def load_model(modelname, dims):
 	return model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list
 
 
-def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, scheduler2, training = True, dataTest = None):
+def backprop(epoch, model, data, dataO,
+			 optimizer, optimizer2,
+			 scheduler1, scheduler2,
+			 training = True,
+			 dataTest = None,
+			 fase = 1):
 	l = nn.MSELoss(reduction = 'mean' if training else 'none')
 	feats = dataO.shape[1]
 	if 'DAGMM' in model.name:
@@ -413,41 +418,42 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 		l1s, l2s = [], []
 		if training:
 			if dataTest is not None:
-				for d1, d2 in zip(dataloader, dataloader_test):
-					prefalta = d1[0]
+				if fase == 1:
+					# entrenamos la fase con datos de prefalta
+					for d in dataloader:
+						local_bs = d[0].shape[0]
+						window = d[0].permute(1, 0, 2)
+						elem = window[-1, :, :].view(1, local_bs, feats)
+						z = model(window, elem, 0)
+						l1 = torch.mean(loss1(z, elem)[0])
+						l1s.append(l1.item())
+						optimizer1.zero_grad()
+						l1.backward(retain_graph=True)
+						optimizer1.step()
 
-					local_bs = prefalta.shape[0]
-					window = prefalta.permute(1, 0, 2)
-					elem = window[-1, :, :].view(1, local_bs, feats)
-					windowClone = window.clone()
-					elemClone = elem.clone()
-					z = model(window, elem, 0)
-					l1 = torch.mean(loss1(z, elem)[0])
-					optimizer1.zero_grad()
-					#l1.backward(retain_graph=True)
+					scheduler1.step()
+					tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
+					return np.mean(l1s), optimizer.param_groups[0]['lr']
+				else:
+					for d1, d2 in zip(dataloader, dataloader_test):
+						vPF = d1[0]
+						local_bs = vPF.shape[0]
+						vPF = vPF.permute(1, 0, 2)
+						PF = vPF[-1, :, :].view(1, local_bs, feats)
+						vF = d2[0]
+						local_bs = vF.shape[0]
+						vF = vF.permute(1, 0, 2)
+						F = vF[-1, :, :].view(1, local_bs, feats)
+						z = model(vPF, F, 1)
+						l2 = torch.mean(loss2(z[0],PF)) + torch.mean(loss2(z[0], z[1]+0.1))
+						l2s.append(l2.item())
+						optimizer2.zero_grad()
+						l2.backward(retain_graph=True)
+						optimizer2.step()
 
-					falta = d2[0]
-					local_bs = falta.shape[0]
-					window2 = falta.permute(1, 0, 2)
-					elem_falta = window2[-1, :, :].view(1, local_bs, feats)
-					z1 = model(windowClone, elem_falta, 1, z.clone())
-
-					l2 = torch.mean(torch.clamp(0.5 - loss2(z1[1],elem_falta)[0],min=0.0))
-					# lossFalta = loss2(z1[1], z.clone())[0]
-					# v_margin = torch.from_numpy(np.ones_like(lossFalta.detach().numpy())*0.5)
-					# # 	c = torch.clamp(v_margin - (x1 - src), min=0.0) ** 2
-					#
-					# l2 = torch.mean(loss2(z1[1], elem_falta)[0]) + torch.mean(torch.clamp(v_margin - lossFalta, min=0.0) ** 2)
-					optimizer2.zero_grad()
-					#l2.backward(retain_graph=True)
-
-					(l1+l2).backward()
-
-					optimizer1.step()
-					optimizer2.step()
-
-					l1s.append(l1.item())
-					l2s.append(l2.item())
+					scheduler2.step()
+					tqdm.write(f'Epoch {epoch},\tL2 = {np.mean(l2s)}')
+					return np.mean(l1s), optimizer.param_groups[0]['lr']
 			else:
 				for d1, _ in dataloader:
 					local_bs = d1.shape[0]
@@ -472,18 +478,14 @@ def backprop(epoch, model, data, dataO, optimizer, optimizer2, scheduler1, sched
 				window1 = d1.permute(1, 0, 2)
 				d2 = d2[0]
 				window2 = d2.permute(1, 0, 2)
-				elem1 = window1[-1, :, :].view(1, bs, feats)
 				elem = window2[-1, :, :].view(1, bs, feats)
-				z = model(window1, elem1, 0)
-				z1 = model(window2, elem, 1, z)
-				if isinstance(z, tuple): z = z[1]
-				if isinstance(z1, tuple): z1 = z1[1]
-			with torch.no_grad():
-				plotDiff(f'.', torch.abs(z-0.5)[0,:,:], torch.abs(z1-0.5)[0,:,:], labels)
+				z1 = model(window1, elem, 1)
+			#with torch.no_grad():
+			#	plotDiff(f'.', z1[0], z1[1], labels)
 
-			loss = phase_syncrony(z, z1[0,:,:])
+			loss = phase_syncrony(z1[0], z1[1])
 			#loss = l(z, z1[0,:,:])[0]
-			return loss.detach().numpy(), z1.detach().numpy()[0]
+			return loss.detach().numpy(), z1[1].detach().numpy()[0]
 	else:
 		y_pred = model(data)
 		loss = l(y_pred, data)
@@ -517,8 +519,13 @@ if __name__ == '__main__':
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
 		num_epochs = 50; e = epoch + 1; start = time()
+		print(f'{color.HEADER}Fase 1: Aprendizaje de la prefalta con {args.model} on {args.dataset}{color.ENDC}')
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
-			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD)
+			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD, fase=1)
+			accuracy_list.append((lossT, lr))
+		print(f'{color.HEADER}Fase 2: Aprendizaje de la falta con {args.model} on {args.dataset}{color.ENDC}')
+		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
+			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD, fase=2)
 			accuracy_list.append((lossT, lr))
 		print(color.BOLD+'Training time: '+"{:10.4f}".format(time()-start)+' s'+color.ENDC)
 		save_model(model, optimizer1, optimizer2, scheduler1, scheduler2, e, accuracy_list)
