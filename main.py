@@ -422,9 +422,6 @@ def backprop(epoch, model, data, dataO,
 					tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)},\tL2 = {np.mean(l2s)}')
 					return np.mean(l1s), optimizer.param_groups[0]['lr']
 				else:
-
-
-
 					scheduler2.step()
 					tqdm.write(f'Epoch {epoch},\tL2 = {np.mean(l2s)}')
 					return np.mean(l1s), optimizer.param_groups[0]['lr']
@@ -476,18 +473,24 @@ def backprop(epoch, model, data, dataO,
 			return loss.detach().numpy(), y_pred.detach().numpy()
 
 if __name__ == '__main__':
+	# def backprop(epoch, model, data, dataO,
+	# 			 optimizer, optimizer2,
+	# 			 scheduler1, scheduler2,
+	# 			 training = True,
+	# 			 dataTest = None,
+	# 			 fase = 1):
 	train_loader, test_loader, labels, test_loader_test, labels_test = load_dataset(args.dataset, 5)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
 	model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list = load_model(args.model, labels.shape[1])
 
 	## Prepare data
-	trainD, testD, testDtest = next(iter(train_loader)), next(iter(test_loader)), next(iter(test_loader_test))
-	trainO, testO = trainD, testD
+	PF, F, vF_test = next(iter(train_loader)), next(iter(test_loader)), next(iter(test_loader_test))
+	#trainO, testO = PF, F
 	if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN', 'TranCIRCE'] or 'TranAD' or 'OSContrastiveTransformer' in model.name:
-		trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
+		vPF_train, vF_train = convert_to_windows(PF, model), convert_to_windows(F, model)
 
-	plotDiff(f'{args.model}_{args.dataset}', testD[:,-1,:], trainD[:,-1,:], labels)
+	plotDiff(f'{args.model}_{args.dataset}', vF_train[:,-1,:], vPF_train[:,-1,:], labels)
 
 
 	### Training phase
@@ -496,7 +499,7 @@ if __name__ == '__main__':
 		num_epochs = 50; e = epoch + 1; start = time()
 		print(f'{color.HEADER}Fase 1 y Fase 2: Aprendizaje de la prefalta y falta intercaladas con {args.model} on {args.dataset}{color.ENDC}')
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
-			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD, fase=1)
+			lossT, lr = backprop(e, model, vPF_train, PF, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=vF_train, fase=1)
 			accuracy_list.append((lossT, lr))
 		# print(f'{color.HEADER}Fase 2: Aprendizaje de la falta con {args.model} on {args.dataset}{color.ENDC}')
 		# for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
@@ -510,11 +513,11 @@ if __name__ == '__main__':
 	torch.zero_grad = True
 	model.eval()
 	print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
-	loss, y_pred = backprop(0, model, trainD, testDtest, optimizer1, optimizer2, scheduler1, scheduler2, training=False, dataTest=testD)
+	loss, y_pred = backprop(0, model, vPF_train, vF_test, optimizer1, optimizer2, scheduler1, scheduler2, training=False, dataTest=vF_train)
 
 	### Plot curves
 	if args.test:
-		if 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
+		if 'TranAD' in model.name: testO = torch.roll(F, 1, 0)
 		plotter(f'{args.model}_{args.dataset}', y_pred[0][0,:,:], y_pred[1][0,:,:].detach().numpy(), loss, labels_test)
 
 	### Scores
