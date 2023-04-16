@@ -579,8 +579,10 @@ class OSContrastiveTransformer(nn.Module):
 		self.margin = 1
 		self.n = self.n_feats * self.n_window
 		self.pos_encoder = PositionalEncoding(2 * feats, 0.1, self.n_window)
-		encoder_layers = TransformerEncoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
-		self.transformer_encoder = TransformerEncoder(encoder_layers, 1)
+		encoder_layers1 = TransformerEncoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
+		self.transformer_encoder1 = TransformerEncoder(encoder_layers1, 1)
+		encoder_layers2 = TransformerEncoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
+		self.transformer_encoder2 = TransformerEncoder(encoder_layers2, 1)
 		decoder_layers1 = TransformerDecoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
 		self.transformer_decoder1 = TransformerDecoder(decoder_layers1, 1)
 		decoder_layers2 = TransformerDecoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
@@ -588,30 +590,37 @@ class OSContrastiveTransformer(nn.Module):
 		self.fcn1 = nn.Sequential(nn.Linear(2 * feats, feats), nn.Hardsigmoid())
 		self.fcn2 = nn.Sequential(nn.Linear(2 * feats, feats), nn.Hardsigmoid())
 
-	def encode(self, src, c, tgt):
+	def encode1(self, src, c, tgt):
 		src = torch.cat((src, c), dim=2)
 		src = src * math.sqrt(self.n_feats)
 		src = self.pos_encoder(src)
-		memory = self.transformer_encoder(src)
+		memory = self.transformer_encoder1(src)
 		tgt = tgt.repeat(1, 1, 2)
 		return tgt, memory
 
-	def forward(self, src, tgt, phase=0, x1=None):
+	def encode2(self, src, c, tgt):
+		src = torch.cat((src, c), dim=2)
+		src = src * math.sqrt(self.n_feats)
+		src = self.pos_encoder(src)
+		memory = self.transformer_encoder2(src)
+		tgt = tgt.repeat(1, 1, 2)
+		return tgt, memory
+
+	def forward(self, src, tgt, phase=0):
 		# Phase 1 - Without anomaly scores
 		if phase == 0:
 			c = torch.zeros_like(src)
-			x1 = self.fcn1(self.transformer_decoder1(*self.encode(src, c, tgt)))
+			x1 = self.fcn1(self.transformer_decoder1(*self.encode1(src, c, tgt)))
 			c = (x1 - src) ** 2
-			x1 = self.fcn1(self.transformer_decoder1(*self.encode(src, c, tgt)))
+			x1 = self.fcn1(self.transformer_decoder1(*self.encode1(src, c, tgt)))
 			return x1
 		# Phase 2 - With anomaly scores
 		if phase == 1:
 			c = torch.zeros_like(src)
-			x1 = self.fcn1(self.transformer_decoder1(*self.encode(src, c, tgt)))
-			c = (x1 - src) ** 2
-			x1 = self.fcn1(self.transformer_decoder1(*self.encode(src, c, tgt)))
-			x2 = self.fcn2(self.transformer_decoder1(*self.encode(src, c, tgt)))
-			return x1, x2
+			x2 = self.fcn2(self.transformer_decoder1(*self.encode2(src, c, tgt)))
+			c = (x2 - src) ** 2
+			x2 = self.fcn2(self.transformer_decoder1(*self.encode2(src, c, tgt)))
+			return x2
 
 		# # Phase 2 - With anomaly scores
 		# if label == 0:

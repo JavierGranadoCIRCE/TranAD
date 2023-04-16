@@ -102,9 +102,9 @@ def load_model(modelname, dims):
 	import src.models
 	model_class = getattr(src.models, modelname)
 	model = model_class(dims).double()
-	optimizer1 = torch.optim.AdamW(list(model.transformer_encoder.parameters()) + list(model.transformer_decoder1.parameters()) +
+	optimizer1 = torch.optim.AdamW(list(model.transformer_encoder1.parameters()) + list(model.transformer_decoder1.parameters()) +
 								   list(model.fcn1.parameters()), lr=model.lr, weight_decay=1e-5)
-	optimizer2 = torch.optim.AdamW(list(model.fcn1.parameters()) + list(model.fcn2.parameters()), lr=model.lr, weight_decay=1e-5)
+	optimizer2 = torch.optim.AdamW(list(model.transformer_encoder2.parameters()) + list(model.fcn2.parameters()), lr=model.lr, weight_decay=1e-5)
 	scheduler1 = torch.optim.lr_scheduler.StepLR(optimizer1, 5, 0.9)
 	scheduler2 = torch.optim.lr_scheduler.StepLR(optimizer2, 5, 0.9)
 	fname = f'checkpoints/{args.model}_{args.dataset}/model.ckpt'
@@ -435,17 +435,12 @@ def backprop(epoch, model, data, dataO,
 					tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
 					return np.mean(l1s), optimizer.param_groups[0]['lr']
 				else:
-					for d1, d2 in zip(dataloader, dataloader_test):
-						vPF = d1[0]
-						local_bs = vPF.shape[0]
-						vPF = vPF.permute(1, 0, 2)
-						PF = vPF[-1, :, :].view(1, local_bs, feats)
-						vF = d2[0]
-						local_bs = vF.shape[0]
-						vF = vF.permute(1, 0, 2)
+					for d in dataloader_test:
+						local_bs = d[0].shape[0]
+						vF = d[0].permute(1, 0, 2)
 						F = vF[-1, :, :].view(1, local_bs, feats)
-						z = model(vPF, F, 1)
-						l2 = torch.mean(loss2(z[0],PF)) + torch.mean(loss2(z[0], z[1]+0.1))
+						z = model(vF, F, 1)
+						l2 = torch.mean(loss2(z, F)[0])
 						l2s.append(l2.item())
 						optimizer2.zero_grad()
 						l2.backward(retain_graph=True)
@@ -476,16 +471,18 @@ def backprop(epoch, model, data, dataO,
 			for d1, d2 in zip(dataloader, dataloader_test):
 				d1 = d1[0]
 				window1 = d1.permute(1, 0, 2)
+				vPF = window1[-1, :, :].view(1, bs, feats)
+				z1 = model(window1, vPF, 0)
 				d2 = d2[0]
 				window2 = d2.permute(1, 0, 2)
 				elem = window2[-1, :, :].view(1, bs, feats)
-				z1 = model(window1, elem, 1)
+				z2 = model(window2, elem, 1)
 			#with torch.no_grad():
 			#	plotDiff(f'.', z1[0], z1[1], labels)
 
-			loss = phase_syncrony(z1[0], z1[1])
+			loss = phase_syncrony(z1, z2)
 			#loss = l(z, z1[0,:,:])[0]
-			return loss.detach().numpy(), z1
+			return loss.detach().numpy(), (z1, z2)
 	else:
 		y_pred = model(data)
 		loss = l(y_pred, data)
@@ -501,7 +498,7 @@ def backprop(epoch, model, data, dataO,
 
 if __name__ == '__main__':
 	train_loader, test_loader, labels = load_dataset(args.dataset, 5)
-	train_loader, test_loader_test, labels = load_dataset_test(args.dataset, 4)
+	train_loader, test_loader_test, labels = load_dataset_test(args.dataset, 5)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
 	model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list = load_model(args.model, labels.shape[1])
