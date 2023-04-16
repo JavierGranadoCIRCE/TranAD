@@ -431,10 +431,6 @@ def backprop(epoch, model, data, dataO,
 						l1.backward(retain_graph=True)
 						optimizer1.step()
 
-					scheduler1.step()
-					tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
-					return np.mean(l1s), optimizer.param_groups[0]['lr']
-				else:
 					for d in dataloader_test:
 						local_bs = d[0].shape[0]
 						vF = d[0].permute(1, 0, 2)
@@ -445,6 +441,13 @@ def backprop(epoch, model, data, dataO,
 						optimizer2.zero_grad()
 						l2.backward(retain_graph=True)
 						optimizer2.step()
+
+					scheduler1.step()
+					tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)},\tL2 = {np.mean(l2s)}')
+					return np.mean(l1s), optimizer.param_groups[0]['lr']
+				else:
+
+
 
 					scheduler2.step()
 					tqdm.write(f'Epoch {epoch},\tL2 = {np.mean(l2s)}')
@@ -516,14 +519,14 @@ if __name__ == '__main__':
 	if not args.test:
 		print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
 		num_epochs = 50; e = epoch + 1; start = time()
-		print(f'{color.HEADER}Fase 1: Aprendizaje de la prefalta con {args.model} on {args.dataset}{color.ENDC}')
+		print(f'{color.HEADER}Fase 1 y Fase 2: Aprendizaje de la prefalta y falta intercaladas con {args.model} on {args.dataset}{color.ENDC}')
 		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
 			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD, fase=1)
 			accuracy_list.append((lossT, lr))
-		print(f'{color.HEADER}Fase 2: Aprendizaje de la falta con {args.model} on {args.dataset}{color.ENDC}')
-		for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
-			lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD, fase=2)
-			accuracy_list.append((lossT, lr))
+		# print(f'{color.HEADER}Fase 2: Aprendizaje de la falta con {args.model} on {args.dataset}{color.ENDC}')
+		# for e in tqdm(list(range(epoch+1, epoch+num_epochs+1))):
+		# 	lossT, lr = backprop(e, model, trainD, trainO, optimizer1, optimizer2, scheduler1, scheduler2, dataTest=testD, fase=2)
+		# 	accuracy_list.append((lossT, lr))
 		print(color.BOLD+'Training time: '+"{:10.4f}".format(time()-start)+' s'+color.ENDC)
 		save_model(model, optimizer1, optimizer2, scheduler1, scheduler2, e, accuracy_list)
 		plot_accuracies(accuracy_list, f'{args.model}_{args.dataset}/TrainWithTest')
