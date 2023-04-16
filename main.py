@@ -485,7 +485,7 @@ def backprop(epoch, model, data, dataO,
 
 			loss = phase_syncrony(z1[0], z1[1])
 			#loss = l(z, z1[0,:,:])[0]
-			return loss.detach().numpy(), z1[1].detach().numpy()[0]
+			return loss.detach().numpy(), z1
 	else:
 		y_pred = model(data)
 		loss = l(y_pred, data)
@@ -540,7 +540,7 @@ if __name__ == '__main__':
 	### Plot curves
 	if args.test:
 		if 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
-		plotter(f'{args.model}_{args.dataset}', trainO, y_pred, loss, labels)
+		plotter(f'{args.model}_{args.dataset}', y_pred[0][0,:,:], y_pred[1][0,:,:].detach().numpy(), loss, labels)
 
 	### Scores
 	# df = pd.DataFrame()

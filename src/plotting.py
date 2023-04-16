@@ -24,7 +24,7 @@ def plotter(name, y_true, y_pred, ascore, labels):
 	time = np.arange(4000)/100
 	for dim in tqdm(range(y_true.shape[1])):
 	#for dim in range(y_true.shape[1]):
-		y_t, y_p, l, a_s = y_true[:, dim], y_pred[:, dim], labels[:, dim], ascore[:, dim]
+		y_t, y_p, l, a_s = y_true[:, dim].detach().numpy(), y_pred[:, dim], labels[:, dim], ascore[:, dim]
 		fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 		ax1.set_ylabel('Value')
 		ax1.set_title(f'Dimension = {dim}')
