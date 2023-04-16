@@ -50,39 +50,15 @@ def load_dataset(dataset, idx):
 		random_idx = random.randint(0, 199)
 		test_loader = DataLoader(loader[1][random_idx,:,:], batch_size=loader[1].shape[1])
 		labels = loader[2][random_idx,:,:]
+
+		test_loader_test = DataLoader(loader[1][idx, :, :], batch_size=loader[1].shape[1])
+		labels_test = loader[2][idx,:,:]
 	else:
-		test_loader = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[0])
+		test_loader = DataLoader(loader[1][idx, :, :], batch_size=loader[1].shape[0])
 		labels = loader[2]
 
 
-	return train_loader, test_loader, labels
-
-def load_dataset_test(dataset, idx):
-	folder = os.path.join(output_folder, dataset)
-	if not os.path.exists(folder):
-		raise Exception('Processed Data not found.')
-	loader = []
-	for file in ['train', 'test', 'labels']:
-		if dataset == 'SMD': file = 'machine-1-1_' + file
-		if dataset == 'SMAP': file = 'P-1_' + file
-		if dataset == 'MSL': file = 'C-1_' + file
-		if dataset == 'UCR': file = '136_' + file
-		if dataset == 'NAB': file = 'ec2_request_latency_system_failure_' + file
-		if dataset == 'CIRCE': file = 'CIRCE_' + file
-		loader.append(np.load(os.path.join(folder, f'{file}.npy')))
-	# loader = [i[:, debug:debug+1] for i in loader]
-	if args.less: loader[0] = cut_array(0.2, loader[0])
-	train_loader = DataLoader(loader[0], batch_size=loader[0].shape[0])
-	if dataset == 'CIRCE':
-		random_idx = random.randint(0, 199)
-		test_loader_test = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[1])
-		labels = loader[2][idx,:,:]
-	else:
-		test_loader_test = DataLoader(loader[1][idx,:,:], batch_size=loader[1].shape[0])
-		labels = loader[2][idx,:,:]
-
-
-	return train_loader, test_loader_test, labels
+	return train_loader, test_loader, labels, test_loader_test, labels_test
 
 def save_model(model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list):
 	folder = f'checkpoints/{args.model}_{args.dataset}/'
@@ -500,8 +476,7 @@ def backprop(epoch, model, data, dataO,
 			return loss.detach().numpy(), y_pred.detach().numpy()
 
 if __name__ == '__main__':
-	train_loader, test_loader, labels = load_dataset(args.dataset, 5)
-	train_loader, test_loader_test, labels = load_dataset_test(args.dataset, 5)
+	train_loader, test_loader, labels, test_loader_test, labels_test = load_dataset(args.dataset, 5)
 	if args.model in ['MERLIN']:
 		eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
 	model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list = load_model(args.model, labels.shape[1])
@@ -540,7 +515,7 @@ if __name__ == '__main__':
 	### Plot curves
 	if args.test:
 		if 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
-		plotter(f'{args.model}_{args.dataset}', y_pred[0][0,:,:], y_pred[1][0,:,:].detach().numpy(), loss, labels)
+		plotter(f'{args.model}_{args.dataset}', y_pred[0][0,:,:], y_pred[1][0,:,:].detach().numpy(), loss, labels_test)
 
 	### Scores
 	# df = pd.DataFrame()
