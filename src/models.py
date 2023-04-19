@@ -606,16 +606,16 @@ class OSContrastiveTransformer(nn.Module):
 		tgt = tgt.repeat(1, 1, 2)
 		return tgt, memory
 
-	def forward(self, src, tgt, phase=0):
-		# Phase 1 - Without anomaly scores
-		if phase == 0:
+	def forward(self, src, tgt, phase=1):
+		# Phase 1 - Only pre-fault signals
+		if phase == 1:
 			c = torch.zeros_like(src)
 			x1 = self.fcn1(self.transformer_decoder1(*self.encode1(src, c, tgt)))
 			c = (x1 - src) ** 2
 			x1 = self.fcn1(self.transformer_decoder1(*self.encode1(src, c, tgt)))
 			return x1
-		# Phase 2 - With anomaly scores
-		if phase == 1:
+		# Phase 2 - Only fault signals
+		if phase == 2:
 			c = torch.zeros_like(src)
 			x2 = self.fcn2(self.transformer_decoder1(*self.encode2(src, c, tgt)))
 			c = (x2 - src) ** 2
@@ -629,3 +629,46 @@ class OSContrastiveTransformer(nn.Module):
 		# 	v_margin = torch.from_numpy(np.ones_like(src)*self.margin)
 		# 	c = torch.clamp(v_margin - (x1 - src), min=0.0) ** 2
 		# x2 = self.fcn(self.transformer_decoder1(*self.encode(src, c, tgt)))
+
+class TransformerSiamesCirce(nn.Module):
+	def __init__(self, feats):
+		super(TransformerSiamesCirce, self).__init__()
+		self.name = 'TransformerSiamesCirce'
+		self.lr = lr
+		self.batch = 128
+		self.n_feats = feats
+		self.n_window = 10
+		self.margin = 1
+		self.n = self.n_feats * self.n_window
+
+		self.pos_encoder = PositionalEncoding(2 * feats, 0.1, self.n_window)
+		encoder_layers = TransformerEncoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
+		self.transformer_encoder = TransformerEncoder(encoder_layers, 1)
+
+		decoder_layers = TransformerDecoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
+		self.transformer_decoder = TransformerDecoder(decoder_layers, 1)
+
+		self.fcn = nn.Sequential(nn.Linear(2 * feats, feats), nn.Hardsigmoid())
+
+	def encode(self, src, c, tgt):
+		src = torch.cat((src, c), dim=2)
+		src = src * math.sqrt(self.n_feats)
+		src = self.pos_encoder(src)
+		memory = self.transformer_encoder(src)
+		tgt = tgt.repeat(1, 1, 2)
+		return tgt, memory
+
+	def forward_once(self, src, tgt):
+		c = torch.zeros_like(src)
+		x1 = self.fcn1(self.transformer_decoder1(*self.encode(src, c, tgt)))
+
+		c = (x1 - src) ** 2
+		x2 = self.fcn1(self.transformer_decoder2(*self.encode(src, c, tgt)))
+
+		return x2
+
+	def forward(self, src1, tgt1, src2, tgt2):
+		x1 = self.forward_once(src1, tgt1)
+		x2 = self.forward_once(src2, tgt2)
+
+		return x1, x2
