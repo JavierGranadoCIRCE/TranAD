@@ -20,6 +20,7 @@ import dagshub
 import random
 
 from src.data import SiameseDataset
+from src.contrastiveLoss import ContrastiveLoss
 
 import os
 
@@ -554,18 +555,38 @@ def backprop(epoch, model, data, dataO,
 def train_siamese(epoch, model, dataLD, optimizer, scheduler):
     # dataLD[0..2]
     # dataLD[0][batch, 4000, 3]
+    loss = ContrastiveLoss(gamma=1.2)
     for i in range(dataLD[0].shape[0]):
         F = dataLD[0][i]
         pF = dataLD[1][i]
         labels = dataLD[2][i]
-        vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
-        optimizer.zero_grad()
-        output1,output2 = model(vPF, pF, vF, F)
-        # x1, x2 = model(img0,img1)
+        similar = dataLD[3][i]
 
-        # loss_contrastive = self.criterion(output1,output2,label)
-        # loss_contrastive.backward()
-        optimizer.step()
+        vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
+
+        Floader = DataLoader(vF, batch_size=128, shuffle=False)
+        pFloader = DataLoader(vPF, batch_size=128, shuffle=False)
+        labelsLoader = DataLoader(labels, batch_size=128, shuffle=False)
+
+        ls = []
+        for d1, d2, l in zip(Floader, pFloader, labelsLoader):
+            local_bs1 = d1.shape[0]
+            window1 = d1.permute(1, 0, 2)
+            elem1 = window1[-1, :, :].view(1, local_bs1, 3)
+
+            local_bs2 = d2.shape[0]
+            window2 = d2.permute(1, 0, 2)
+            elem2 = window2[-1, :, :].view(1, local_bs2, 3)
+
+            optimizer.zero_grad()
+            output1,output2 = model(window1, elem1, window2, elem2)
+
+            loss_contrastive = loss(output1, output2, l, similar)
+            ls.append(loss_contrastive)
+            loss_contrastive.backward()
+            optimizer.step()
+
+    tqdm.write(f'Epoch {epoch}, L = {np.mean(ls)}')
 
 
 if __name__ == '__main__':
@@ -577,7 +598,7 @@ if __name__ == '__main__':
     # 			 fase = 1):
     if args.model in ['TransformerSiamesCirce']:
         data = SiameseDataset('processed/CIRCE/faltas.csv', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './')
-        model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[1])
+        model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
     else:
         train_loader, test_loader, labels, test_loader_test, labels_test = load_dataset(args.dataset, 5)
         if args.model in ['MERLIN']:

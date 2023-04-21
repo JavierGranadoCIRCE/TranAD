@@ -43,7 +43,7 @@ class SiameseDataset(Dataset):
             # Generamos una etiqueta con un escalón en el momento de la falta
             labels = self.labels[s2 - 1]
 
-        return PF, F, labels
+        return PF, F, labels, l
 
     def getDataLoader(self, batch_size):
         self.trainDL = DataLoader(self,
