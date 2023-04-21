@@ -552,10 +552,15 @@ def backprop(epoch, model, data, dataO,
 
 
 def train_siamese(epoch, model, dataLD, optimizer, scheduler):
-    for data in dataLD:
-        s1, s2, label = data
+    # dataLD[0..2]
+    # dataLD[0][batch, 4000, 3]
+    for i in range(dataLD[0].shape[0]):
+        F = dataLD[0][i]
+        pF = dataLD[1][i]
+        labels = dataLD[2][i]
+        vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
         optimizer.zero_grad()
-
+        output1,output2 = model(vPF, pF, vF, F)
         # x1, x2 = model(img0,img1)
 
         # loss_contrastive = self.criterion(output1,output2,label)
@@ -592,17 +597,18 @@ if __name__ == '__main__':
 
     ### Training phase
     if args.model in ['TransformerSiamesCirce']:
+        dataLD = DataLoader(data,
+                                 shuffle=True,
+                                 batch_size=4)
+        dataIter = next(iter(dataLD))
         if not args.test:
             epoch = 0
             print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
             num_epochs = 50;
             e = epoch + 1;
             start = time()
-            data_loader = DataLoader(data,
-                                     shuffle=True,
-                                     batch_size=4)
             for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
-                train_siamese(e, model, data_loader, optimizer=optimizer, scheduler=scheduler)
+                train_siamese(e, model, dataIter, optimizer=optimizer, scheduler=scheduler)
     else:
         if not args.test:
             print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')

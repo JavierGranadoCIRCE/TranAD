@@ -660,10 +660,10 @@ class TransformerSiamesCirce(nn.Module):
 
 	def forward_once(self, src, tgt):
 		c = torch.zeros_like(src)
-		x1 = self.fcn1(self.transformer_decoder1(*self.encode(src, c, tgt)))
+		x1 = self.fcn(self.transformer_decoder(*self.encode(src, c, tgt)))
 
 		c = (x1 - src) ** 2
-		x2 = self.fcn1(self.transformer_decoder2(*self.encode(src, c, tgt)))
+		x2 = self.fcn(self.transformer_decoder(*self.encode(src, c, tgt)))
 
 		return x2
 
