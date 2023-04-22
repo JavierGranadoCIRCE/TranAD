@@ -88,8 +88,8 @@ def save_model(model, optimizer, scheduler, epoch, accuracy_list, optimizer2=Non
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer1.state_dict(),
-            'scheduler_state_dict': scheduler1.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
             'accuracy_list': accuracy_list}, file_path)
 
 
@@ -582,11 +582,12 @@ def train_siamese(epoch, model, dataLD, optimizer, scheduler):
             output1,output2 = model(window1, elem1, window2, elem2)
 
             loss_contrastive = loss(output1, output2, l, similar)
-            ls.append(loss_contrastive)
+            ls.append(loss_contrastive.item())
             loss_contrastive.backward()
             optimizer.step()
 
     tqdm.write(f'Epoch {epoch}, L = {np.mean(ls)}')
+    return np.mean(ls)
 
 
 if __name__ == '__main__':
@@ -618,10 +619,9 @@ if __name__ == '__main__':
 
     ### Training phase
     if args.model in ['TransformerSiamesCirce']:
-        dataLD = DataLoader(data,
-                                 shuffle=True,
-                                 batch_size=4)
+        dataLD = DataLoader(data, shuffle=True, batch_size=8)
         dataIter = next(iter(dataLD))
+        loss_list = []
         if not args.test:
             epoch = 0
             print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
@@ -629,7 +629,10 @@ if __name__ == '__main__':
             e = epoch + 1;
             start = time()
             for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
-                train_siamese(e, model, dataIter, optimizer=optimizer, scheduler=scheduler)
+                loss = train_siamese(e, model, dataIter, optimizer=optimizer, scheduler=scheduler)
+                loss_list.append(loss)
+            save_model(model,optimizer,scheduler,e, loss_list)
+            plot_losses(loss_list, f'{args.model}_{args.dataset}/TrainWithTest')
     else:
         if not args.test:
             print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')

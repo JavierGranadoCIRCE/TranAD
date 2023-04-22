@@ -29,6 +29,14 @@ def plot_accuracies(accuracy_list, folder):
 	plt.savefig(f'plots/{folder}/training-graph.pdf')
 	plt.clf()
 
+def plot_losses(loss_list, folder):
+	os.makedirs(f'plots/{folder}/', exist_ok=True)
+	plt.xlabel('Epochs')
+	plt.ylabel('Average Training Loss')
+	plt.plot(range(len(loss_list)), loss_list, label='Average Training Loss', linewidth=1, linestyle='-', marker='.')
+	plt.savefig(f'plots/{folder}/training-graph.pdf')
+	plt.clf()
+
 def cut_array(percentage, arr):
 	print(f'{color.BOLD}Slicing dataset to {int(percentage*100)}%{color.ENDC}')
 	mid = round(arr.shape[0] / 2)
