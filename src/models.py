@@ -634,7 +634,7 @@ class TransformerSiamesCirce(nn.Module):
 	def __init__(self, feats):
 		super(TransformerSiamesCirce, self).__init__()
 		self.name = 'TransformerSiamesCirce'
-		self.lr = lr
+		self.lr = 0.004
 		self.batch = 128
 		self.n_feats = feats
 		self.n_window = 10

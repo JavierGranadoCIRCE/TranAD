@@ -21,6 +21,7 @@ import random
 
 from src.data import SiameseDataset
 from src.contrastiveLoss import ContrastiveLoss
+import torch.nn.functional as Funct
 
 import os
 
@@ -98,6 +99,8 @@ def load_model(modelname, dims):
     model_class = getattr(src.models, modelname)
     model = model_class(dims).double()
     optimizer = torch.optim.AdamW(model.parameters(), lr=model.lr, weight_decay=1e-5)
+    #optimContrastive = torch.optim.RMSprop(model.parameters, lr=model.lr, alpha=0.99, eps=1e-8, weight_decay=0.0005, momentum=0.9)
+    optimContrastive = optim.RMSprop(model.parameters(), lr=1e-4, alpha=0.99, eps=1e-8, weight_decay=0.0005, momentum=0.9)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 5, 0.9)
     fname = f'checkpoints/{args.model}_{args.dataset}/model.ckpt'
     if os.path.exists(fname) and (not args.retrain or args.test):
@@ -112,7 +115,7 @@ def load_model(modelname, dims):
         print(f"{color.GREEN}Creating new model: {model.name}{color.ENDC}")
         epoch = -1;
         accuracy_list = []
-    return model, optimizer, scheduler, epoch, accuracy_list
+    return model, optimizer, optimContrastive, scheduler, epoch, accuracy_list
 
 
 def backprop(epoch, model, data, dataO,
@@ -552,30 +555,29 @@ def backprop(epoch, model, data, dataO,
             return loss.detach().numpy(), y_pred.detach().numpy()
 
 
-def train_siamese(epoch, model, dataLD, optimizer, scheduler):
+def train_siamese(epoch, model, data, optimizer, scheduler):
     # dataLD[0..2]
     # dataLD[0][batch, 4000, 3]
-    loss = ContrastiveLoss(gamma=1.2)
-    for i in range(dataLD[0].shape[0]):
-        F = dataLD[0][i]
-        pF = dataLD[1][i]
-        labels = dataLD[2][i]
-        similar = dataLD[3][i]
+    loss = ContrastiveLoss(gamma=1.2, margin=2)
 
-        vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
+    dataLD = DataLoader(data, batch_size=8, shuffle=True)
 
-        Floader = DataLoader(vF, batch_size=128, shuffle=False)
-        pFloader = DataLoader(vPF, batch_size=128, shuffle=False)
-        labelsLoader = DataLoader(labels, batch_size=128, shuffle=False)
+    ls=[]
+    for d in dataLD:
+        for i in range(d[0].shape[0]):
+            pF = d[0][i]
+            F = d[1][i]
+            l = d[2][i]
+            similar = d[3][i]
 
-        ls = []
-        for d1, d2, l in zip(Floader, pFloader, labelsLoader):
-            local_bs1 = d1.shape[0]
-            window1 = d1.permute(1, 0, 2)
+            vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
+
+            local_bs1 = vPF.shape[0]
+            window1 = vPF.permute(1, 0, 2)
             elem1 = window1[-1, :, :].view(1, local_bs1, 3)
 
-            local_bs2 = d2.shape[0]
-            window2 = d2.permute(1, 0, 2)
+            local_bs2 = vF.shape[0]
+            window2 = vF.permute(1, 0, 2)
             elem2 = window2[-1, :, :].view(1, local_bs2, 3)
 
             optimizer.zero_grad()
@@ -589,6 +591,34 @@ def train_siamese(epoch, model, dataLD, optimizer, scheduler):
     tqdm.write(f'Epoch {epoch}, L = {np.mean(ls)}')
     return np.mean(ls)
 
+def inference_siamese(epoch, model, data, optimizer, scheduler):
+    # dataLD[0..2]
+    # dataLD[0][batch, 4000, 3]
+    loss = ContrastiveLoss(gamma=1.2, margin=1)
+
+    pF = torch.tensor(data[epoch][0])
+    F = torch.tensor(data[epoch][1])
+    l = torch.tensor(data[epoch][2])
+    similar = torch.tensor(data[epoch][3])
+
+    vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
+
+    local_bs1 = vPF.shape[0]
+    window1 = vPF.permute(1, 0, 2)
+    elem1 = window1[-1, :, :].view(1, local_bs1, 3)
+
+    local_bs2 = vF.shape[0]
+    window2 = vF.permute(1, 0, 2)
+    elem2 = window2[-1, :, :].view(1, local_bs2, 3)
+
+    optimizer.zero_grad()
+    output1,output2 = model(window1, elem1, window2, elem2)
+
+    loss = phase_syncrony(output1, output2)
+    #loss = output1 - output2
+
+    return loss.detach().numpy(), (output1, output2)
+
 
 if __name__ == '__main__':
     # def backprop(epoch, model, data, dataO,
@@ -598,8 +628,8 @@ if __name__ == '__main__':
     # 			 dataTest = None,
     # 			 fase = 1):
     if args.model in ['TransformerSiamesCirce']:
-        data = SiameseDataset('processed/CIRCE/faltas.csv', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './')
-        model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
+        data = SiameseDataset('processed/CIRCE/faltas.csv', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './', mode='test_1')
+        model, optimizer, optimContrastive, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
     else:
         train_loader, test_loader, labels, test_loader_test, labels_test = load_dataset(args.dataset, 5)
         if args.model in ['MERLIN']:
@@ -619,8 +649,8 @@ if __name__ == '__main__':
 
     ### Training phase
     if args.model in ['TransformerSiamesCirce']:
-        dataLD = DataLoader(data, shuffle=True, batch_size=8)
-        dataIter = next(iter(dataLD))
+        #dataLD = DataLoader(data, shuffle=True, batch_size=8)
+        #dataIter = next(iter(dataLD))
         loss_list = []
         if not args.test:
             epoch = 0
@@ -629,7 +659,7 @@ if __name__ == '__main__':
             e = epoch + 1;
             start = time()
             for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
-                loss = train_siamese(e, model, dataIter, optimizer=optimizer, scheduler=scheduler)
+                loss = train_siamese(e, model, data, optimizer=optimContrastive, scheduler=scheduler)
                 loss_list.append(loss)
             save_model(model,optimizer,scheduler,e, loss_list)
             plot_losses(loss_list, f'{args.model}_{args.dataset}/TrainWithTest')
@@ -655,17 +685,21 @@ if __name__ == '__main__':
             plot_accuracies(accuracy_list, f'{args.model}_{args.dataset}/TrainWithTest')
 
     ### Testing phase
-    torch.zero_grad = True
-    model.eval()
-    print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
-    loss, y_pred = backprop(0, model, vPF_train, vF_test, optimizer1, optimizer2, scheduler1, scheduler2,
-                            training=False, dataTest=vF_train)
+    if args.model in ['TransformerSiamesCirce']:
+        torch.zero_grad = True
+        model.eval()
+        loss, (x1, x2) = inference_siamese(24, model, data, optimizer=optimContrastive, scheduler=scheduler)
+    else:
+        torch.zero_grad = True
+        model.eval()
+        print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
+        loss, y_pred = backprop(0, model, vPF_train, vF_test, optimizer1, optimizer2, scheduler1, scheduler2,
+                                training=False, dataTest=vF_train)
 
     ### Plot curves
     if args.test:
         if 'TranAD' in model.name: testO = torch.roll(F, 1, 0)
-        plotter(f'{args.model}_{args.dataset}', y_pred[0][0, :, :], y_pred[1][0, :, :].detach().numpy(), loss,
-                labels_test)
+        plotter(f'{args.model}_{args.dataset}', x1[0], x2[0], loss, data[24][2])
 
 ### Scores
 # df = pd.DataFrame()

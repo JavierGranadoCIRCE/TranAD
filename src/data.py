@@ -7,12 +7,13 @@ from torch.utils.data import Dataset, DataLoader
 
 
 class SiameseDataset(Dataset):
-    def __init__(self, csv_file, csv_resumen_faltas, root_dir, transform=None):
+    def __init__(self, csv_file, csv_resumen_faltas, root_dir, transform=None, mode='train'):
         self.data = pd.read_csv(csv_file)
         self.resumen = pd.read_csv(csv_resumen_faltas)
         self.data.columns = ["signal 1", "signal 2", "label"]  # Label=0 cuando son iguales
         self.root_dir = root_dir
         self.transform = transform
+        self.mode = mode
 
         self.pre_falta = np.load('processed/CIRCE/CIRCE_train.npy')
         self.faltas = np.load('processed/CIRCE/CIRCE_test.npy')
