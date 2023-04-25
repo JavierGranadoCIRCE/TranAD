@@ -119,8 +119,8 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
 	return y
 
 def phase_syncrony(prefalta, falta):
-	pdPrefalta = pd.DataFrame(prefalta[0,:,:].detach().numpy())
-	pdFalta = pd.DataFrame(falta[0,:,:].detach().numpy())
+	pdPrefalta = pd.DataFrame(prefalta[0,:,:].data.cpu().numpy())
+	pdFalta = pd.DataFrame(falta[0,:,:].data.cpu().numpy())
 
 	lowcut  = .001
 	highcut = 0.05

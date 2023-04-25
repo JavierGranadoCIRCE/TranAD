@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 class ContrastiveLoss(torch.nn.Module):
@@ -21,13 +22,21 @@ class ContrastiveLoss(torch.nn.Module):
                            y * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
         return torch.mean(loss_contrastive)
 
-    def forwardback(self, output1, output2, label, y):
+class ContrastiveLossFF(torch.nn.Module):
+    def __init__(self, gamma=1.2, margin=2):
+        super(ContrastiveLossFF, self).__init__()
+        self.gamma = gamma
+        self.margin = margin
+        self.fcn = nn.Linear(4000, 4000)
+
+    def forward(self, output1, output2, label, y):
         dif = output1-output2
-        if torch.isnan(torch.log(1 - self.probabilidad(dif, label))):
-            loss_contrastive = -self.gamma * y * torch.log(self.probabilidad(dif, label))
-        elif torch.isnan(torch.log(self.probabilidad(dif, label))):
-            loss_contrastive = - (1-y) * torch.log(1 - self.probabilidad(dif, label))
+        contrast = self.fcn(dif)
+        if torch.isnan(torch.log(1 - self.probabilidad(contrast, label))):
+            loss_contrastive = -self.gamma * y * torch.log(self.probabilidad(contrast, label))
+        elif torch.isnan(torch.log(self.probabilidad(contrast, label))):
+            loss_contrastive = - (1-y) * torch.log(1 - self.probabilidad(contrast, label))
         else:
-            loss_contrastive = -self.gamma * y * torch.log(self.probabilidad(dif, label)) - \
-                               (1-y) * torch.log(1 - self.probabilidad(dif, label))
+            loss_contrastive = -self.gamma * y * torch.log(self.probabilidad(contrast, label)) - \
+                               (1-y) * torch.log(1 - self.probabilidad(contrast, label))
         return loss_contrastive

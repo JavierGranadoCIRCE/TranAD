@@ -8,7 +8,12 @@ from torch.utils.data import Dataset, DataLoader
 
 class SiameseDataset(Dataset):
     def __init__(self, csv_file, csv_resumen_faltas, root_dir, transform=None, mode='train'):
-        self.data = pd.read_csv(csv_file)
+        if mode == 'train':
+            file = csv_file + '.csv'
+        else:
+            file = csv_file + mode + '.csv'
+
+        self.data = pd.read_csv(file)
         self.resumen = pd.read_csv(csv_resumen_faltas)
         self.data.columns = ["signal 1", "signal 2", "label"]  # Label=0 cuando son iguales
         self.root_dir = root_dir
@@ -31,13 +36,13 @@ class SiameseDataset(Dataset):
 
         # Lectura de prefalta y faltas
         PF = self.pre_falta
-        if index == 0:
+        if s2 == 0:
             F = self.pre_falta
         else:
             F = self.faltas[s2 - 1]
 
         # Lectura de etiquetas
-        if index == 0:
+        if s2 == 0:
             # Generamos una etiqueta con ceros
             labels = np.zeros_like(self.labels[0])
         else:

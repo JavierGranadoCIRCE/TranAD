@@ -555,7 +555,7 @@ def backprop(epoch, model, data, dataO,
             return loss.detach().numpy(), y_pred.detach().numpy()
 
 
-def train_siamese(epoch, model, data, optimizer, scheduler):
+def train_siamese(epoch, model, data, optimizer, scheduler, device='cuda'):
     # dataLD[0..2]
     # dataLD[0][batch, 4000, 3]
     loss = ContrastiveLoss(gamma=1.2, margin=2)
@@ -565,10 +565,10 @@ def train_siamese(epoch, model, data, optimizer, scheduler):
     ls=[]
     for d in dataLD:
         for i in range(d[0].shape[0]):
-            pF = d[0][i]
-            F = d[1][i]
-            l = d[2][i]
-            similar = d[3][i]
+            pF = d[0][i].to(device)
+            F = d[1][i].to(device)
+            l = d[2][i].to(device)
+            similar = d[3][i].to(device)
 
             vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
 
@@ -591,15 +591,15 @@ def train_siamese(epoch, model, data, optimizer, scheduler):
     tqdm.write(f'Epoch {epoch}, L = {np.mean(ls)}')
     return np.mean(ls)
 
-def inference_siamese(epoch, model, data, optimizer, scheduler):
+def inference_siamese(epoch, model, data, optimizer, scheduler, device='cuda'):
     # dataLD[0..2]
     # dataLD[0][batch, 4000, 3]
     loss = ContrastiveLoss(gamma=1.2, margin=1)
 
-    pF = torch.tensor(data[epoch][0])
-    F = torch.tensor(data[epoch][1])
-    l = torch.tensor(data[epoch][2])
-    similar = torch.tensor(data[epoch][3])
+    pF = torch.tensor(data[epoch][0]).to(device)
+    F = torch.tensor(data[epoch][1]).to(device)
+    l = torch.tensor(data[epoch][2]).to(device)
+    similar = torch.tensor(data[epoch][3]).to(device)
 
     vPF, vF = convert_to_windows(pF, model), convert_to_windows(F, model)
 
@@ -614,10 +614,10 @@ def inference_siamese(epoch, model, data, optimizer, scheduler):
     optimizer.zero_grad()
     output1,output2 = model(window1, elem1, window2, elem2)
 
-    loss = phase_syncrony(output1, output2)
-    #loss = output1 - output2
+    loss1 = 1 - phase_syncrony(output1, output2)
+    loss2 = torch.abs((output1 - output2) / output1) + torch.sqrt((output1 - output2)**2)
 
-    return loss.detach().numpy(), (output1, output2)
+    return (loss1, loss2[0]), (output1, output2)
 
 
 if __name__ == '__main__':
@@ -627,98 +627,38 @@ if __name__ == '__main__':
     # 			 training = True,
     # 			 dataTest = None,
     # 			 fase = 1):
-    if args.model in ['TransformerSiamesCirce']:
-        data = SiameseDataset('processed/CIRCE/faltas.csv', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './', mode='test_1')
-        model, optimizer, optimContrastive, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
-    else:
-        train_loader, test_loader, labels, test_loader_test, labels_test = load_dataset(args.dataset, 5)
-        if args.model in ['MERLIN']:
-            eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
-        model, optimizer1, optimizer2, scheduler1, scheduler2, epoch, accuracy_list = load_model(args.model,
-                                                                                                 labels.shape[1])
 
-    ## Prepare data
-    if args.model not in ['TransformerSiamesCirce']:
-        PF, F, vF_test = next(iter(train_loader)), next(iter(test_loader)), next(iter(test_loader_test))
-        # trainO, testO = PF, F
-        if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT', 'MAD_GAN',
-                          'TranCIRCE'] or 'TranAD' or 'OSContrastiveTransformer' in model.name:
-            vPF_train, vF_train = convert_to_windows(PF, model), convert_to_windows(F, model)
+    # 1. Prepare data
+    data = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
+                          mode='train')
+    data_test = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
+                          mode='_test_1')
+    model, optimizer, optimContrastive, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
 
-        plotDiff(f'{args.model}_{args.dataset}', vF_train[:, -1, :], vPF_train[:, -1, :], labels)
+    model = model.to('cuda')
 
-    ### Training phase
-    if args.model in ['TransformerSiamesCirce']:
-        #dataLD = DataLoader(data, shuffle=True, batch_size=8)
-        #dataIter = next(iter(dataLD))
-        loss_list = []
-        if not args.test:
-            epoch = 0
-            print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-            num_epochs = 50;
-            e = epoch + 1;
-            start = time()
-            for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
-                loss = train_siamese(e, model, data, optimizer=optimContrastive, scheduler=scheduler)
-                loss_list.append(loss)
-            save_model(model,optimizer,scheduler,e, loss_list)
-            plot_losses(loss_list, f'{args.model}_{args.dataset}/TrainWithTest')
-    else:
-        if not args.test:
-            print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-            num_epochs = 50;
-            e = epoch + 1;
-            start = time()
-            print(
-                f'{color.HEADER}Fase 1 y Fase 2: Aprendizaje de la prefalta y falta intercaladas con {args.model} on {args.dataset}{color.ENDC}')
-            for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
-                lossT, lr = backprop(e, model, vPF_train, PF, optimizer1, optimizer2, scheduler1, scheduler2,
-                                     dataTest=vF_train, fase=1)
-                accuracy_list.append((lossT, lr))
-            print(f'{color.HEADER}Fase 2: Aprendizaje de la falta con {args.model} on {args.dataset}{color.ENDC}')
-            for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
-                lossT, lr = backprop(e, model, vF_train, F, optimizer1, optimizer2, scheduler1, scheduler2,
-                                     dataTest=vF_train, fase=2)
-                accuracy_list.append((lossT, lr))
-            print(color.BOLD + 'Training time: ' + "{:10.4f}".format(time() - start) + ' s' + color.ENDC)
-            save_model(model, optimizer1, optimizer2, scheduler1, scheduler2, e, accuracy_list)
-            plot_accuracies(accuracy_list, f'{args.model}_{args.dataset}/TrainWithTest')
+    # 2. Training phase
+    loss_list = []
+    if not args.test:
+        epoch = 0
+        print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
+        num_epochs = args.epochs;
+        e = epoch + 1;
+        start = time()
+        for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
+            loss = train_siamese(e, model, data, optimizer=optimContrastive, scheduler=scheduler)
+            loss_list.append(loss)
+        save_model(model,optimizer,scheduler,e, loss_list)
+        plot_losses(loss_list, f'{args.model}_{args.dataset}/TrainWithTest')
 
-    ### Testing phase
-    if args.model in ['TransformerSiamesCirce']:
-        torch.zero_grad = True
-        model.eval()
-        loss, (x1, x2) = inference_siamese(24, model, data, optimizer=optimContrastive, scheduler=scheduler)
-    else:
-        torch.zero_grad = True
-        model.eval()
-        print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
-        loss, y_pred = backprop(0, model, vPF_train, vF_test, optimizer1, optimizer2, scheduler1, scheduler2,
-                                training=False, dataTest=vF_train)
-
-    ### Plot curves
+    # 3. Testing phase
     if args.test:
-        if 'TranAD' in model.name: testO = torch.roll(F, 1, 0)
-        plotter(f'{args.model}_{args.dataset}', x1[0], x2[0], loss, data[24][2])
+        torch.zero_grad = True
+        model.eval()
+        for item in range(len(data_test)):
+            (loss1, loss2), (x1, x2) = inference_siamese(item, model, data_test, optimizer=optimContrastive, scheduler=scheduler)
 
-### Scores
-# df = pd.DataFrame()
-# lossT, _ = backprop(0, model, trainD, trainO, optimizer, scheduler, training=False)
-# for i in range(loss.shape[1]):
-# 	lt, l, ls = lossT[:, i], loss[:, i], labels[:, i]
-# 	result, pred = pot_eval(lt, l, ls); preds.append(pred)
-# 	#df = pd.concat([df, result])
-# 	df = df.append(result, ignore_index=True)
-# # preds = np.concatenate([i.reshape(-1, 1) + 0 for i in preds], axis=1)
-# # pd.DataFrame(preds, columns=[str(i) for i in range(10)]).to_csv('labels.csv')
-# lossTfinal, lossFinal = np.mean(lossT, axis=1), np.mean(loss, axis=1)
-# labelsFinal = (np.sum(labels, axis=1) >= 1) + 0
-# result, _ = pot_eval(lossTfinal, lossFinal, labelsFinal)
-# result.update(hit_att(loss, labels))
-# result.update(ndcg(loss, labels))
-# print(df)
-# pprint(result)
-# # pprint(getresults2(df, result))
-# # beep(4)
-
-# %%
+            # 4. Plot curves
+            if args.test:
+                plotEspectrogramas(x1[0], x2[0])
+                plotterSiamese(f'{args.model}_{args.dataset}_{item}', x1[0], x2[0], loss1, loss2, data_test[item][2])
