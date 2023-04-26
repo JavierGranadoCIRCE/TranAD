@@ -20,7 +20,7 @@ import dagshub
 import random
 
 from src.data import SiameseDataset
-from src.contrastiveLoss import ContrastiveLoss
+from src.contrastiveLoss import ContrastiveLoss, ContrastiveLossFF
 import torch.nn.functional as Funct
 
 import os
@@ -558,7 +558,7 @@ def backprop(epoch, model, data, dataO,
 def train_siamese(epoch, model, data, optimizer, scheduler, device='cuda'):
     # dataLD[0..2]
     # dataLD[0][batch, 4000, 3]
-    loss = ContrastiveLoss(gamma=1.2, margin=2)
+    loss = ContrastiveLoss(gamma=1.2, margin=2).to(device)
 
     dataLD = DataLoader(data, batch_size=8, shuffle=True)
 

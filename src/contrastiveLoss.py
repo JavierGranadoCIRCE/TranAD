@@ -27,11 +27,11 @@ class ContrastiveLossFF(torch.nn.Module):
         super(ContrastiveLossFF, self).__init__()
         self.gamma = gamma
         self.margin = margin
-        self.fcn = nn.Linear(4000, 4000)
+        self.fcn = nn.Linear(3, 3)
 
     def forward(self, output1, output2, label, y):
         dif = output1-output2
-        contrast = self.fcn(dif)
+        contrast = self.fcn(dif.type(torch.FloatTensor))
         if torch.isnan(torch.log(1 - self.probabilidad(contrast, label))):
             loss_contrastive = -self.gamma * y * torch.log(self.probabilidad(contrast, label))
         elif torch.isnan(torch.log(self.probabilidad(contrast, label))):
