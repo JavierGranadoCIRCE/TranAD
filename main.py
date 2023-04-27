@@ -1,5 +1,7 @@
 import pickle
 import os
+
+import numpy as np
 import pandas as pd
 import torch.onnx
 from tqdm import tqdm
@@ -22,6 +24,7 @@ import random
 from src.data import SiameseDataset
 from src.contrastiveLoss import ContrastiveLoss, ContrastiveLossFF
 import torch.nn.functional as Funct
+import scipy.integrate as it
 
 import os
 
@@ -591,7 +594,7 @@ def train_siamese(epoch, model, data, optimizer, scheduler, device='cuda'):
     tqdm.write(f'Epoch {epoch}, L = {np.mean(ls)}')
     return np.mean(ls)
 
-def inference_siamese(epoch, model, data, optimizer, scheduler, device='cuda'):
+def inference_siamese(epoch, model, data, optimizer, scheduler, threshold=0.004, device='cuda'):
     # dataLD[0..2]
     # dataLD[0][batch, 4000, 3]
     loss = ContrastiveLoss(gamma=1.2, margin=1)
@@ -614,10 +617,16 @@ def inference_siamese(epoch, model, data, optimizer, scheduler, device='cuda'):
     optimizer.zero_grad()
     output1,output2 = model(window1, elem1, window2, elem2)
 
+    loss = calc_correlation(output1, output2)
+
     loss1 = 1 - phase_syncrony(output1, output2)
     loss2 = torch.abs((output1 - output2) / output1) + torch.sqrt((output1 - output2)**2)
 
-    return (loss1, loss2[0]), (output1, output2)
+    #loss2 = it.cumtrapz(loss2.data.cpu().numpy(), initial=0.0)
+
+    score = (loss2 > threshold)*1.0
+
+    return (loss1, loss2[0]), (output1, output2), score[0]
 
 
 if __name__ == '__main__':
@@ -656,9 +665,9 @@ if __name__ == '__main__':
         torch.zero_grad = True
         model.eval()
         for item in range(len(data_test)):
-            (loss1, loss2), (x1, x2) = inference_siamese(item, model, data_test, optimizer=optimContrastive, scheduler=scheduler)
+            (loss1, loss2), (x1, x2), score = inference_siamese(item, model, data_test, optimizer=optimContrastive, scheduler=scheduler)
 
             # 4. Plot curves
             if args.test:
-                plotEspectrogramas(x1[0], x2[0])
-                plotterSiamese(f'{args.model}_{args.dataset}_{item}', x1[0], x2[0], loss1, loss2, data_test[item][2])
+                #plotEspectrogramas(x1[0], x2[0])
+                plotterSiamese(f'{args.model}_{args.dataset}_{item}', x1[0], x2[0], loss1, loss2, data_test[item][2], score)

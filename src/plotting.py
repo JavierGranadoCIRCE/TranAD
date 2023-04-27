@@ -52,13 +52,17 @@ def plotEspectrogramas(s1, s2):
 	ax2.specgram(s2[:,0].data.cpu().numpy(), Fs=20, cmap="rainbow")
 	plt.show()
 
-def plotterSiamese(name, y_true, y_pred, ascore1, ascore2, labels):
+def plotterSiamese(name, y_true, y_pred, ascore1, ascore2, labels, score):
 	if 'TranAD' or 'TranCIRCE' in name: y_true = torch.roll(y_true, 1, 0)
 	pdf = PdfPages(f'plots/TransformerSiamesCirce_CIRCE/{name}.pdf')
 	time = np.arange(4000)/100
 	for dim in tqdm(range(y_true.shape[1])):
 		#for dim in range(y_true.shape[1]):
-		y_t, y_p, l, a_s1, a_s2 = y_true[:, dim].data.cpu().numpy(), y_pred[:, dim].data.cpu().numpy(), labels[:, dim], ascore1[:, dim], ascore2[:, dim].data.cpu().numpy()
+		y_t, y_p, l, a_s1, a_s2, s = y_true[:, dim].data.cpu().numpy(), \
+									 y_pred[:, dim].data.cpu().numpy(), \
+									 labels[:, dim], ascore1[:, dim], \
+									 ascore2[:, dim].data.cpu().numpy(), \
+									 score[:, dim].data.cpu().numpy()
 		fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 		ax1.set_ylabel('Value')
 		ax1.set_title(f'Dimension = {dim}')
@@ -73,6 +77,9 @@ def plotterSiamese(name, y_true, y_pred, ascore1, ascore2, labels):
 		ax2.plot(smooth(a_s2), linewidth=0.2, color='b')
 		ax2.set_xlabel('Timestamp')
 		ax2.set_ylabel('Anomaly Score')
+		ax4 = ax2.twinx()
+		ax4.plot(s, '--', linewidth=0.3, alpha=0.5)
+		ax4.fill_between(np.arange(s.shape[0]), s, color='blue', alpha=0.3)
 		pdf.savefig(fig)
 		plt.close()
 	pdf.close()

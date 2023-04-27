@@ -52,6 +52,16 @@ def getresults2(df, result):
 	results2['f1*'] = 2 * results2['precision'] * results2['recall'] / (results2['precision'] + results2['recall'])
 	return results2
 
+def calc_correlation(actual, predic):
+	actual = actual[0,:,:].data.cpu().numpy()
+	predic = predic.data.cpu().numpy()
+
+	a_diff = actual - np.mean(actual)
+	p_diff = predic - np.mean(predic)
+	numerator = (a_diff * p_diff)
+	denominator = np.sqrt(np.sum(a_diff ** 2)) * np.sqrt(np.sum(p_diff ** 2))
+	return numerator / denominator
+
 def pearson_corr(prefalta, falta):
 	pdPrefalta = pd.DataFrame(prefalta[0,:,:].detach().numpy())
 	pdFalta = pd.DataFrame(falta.detach().numpy())
