@@ -15,7 +15,10 @@ class SiameseDataset(Dataset):
 
         self.data = pd.read_csv(file)
         self.resumen = pd.read_csv(csv_resumen_faltas)
-        self.data.columns = ["signal 1", "signal 2", "label"]  # Label=0 cuando son iguales
+        if mode == 'train':
+            self.data.columns = ["signal 1", "signal 2", "label"]  # Label=0 cuando son iguales
+        else:
+            self.data.columns = ["signal 1", "signal 2", "label", "threshold"]  # Label=0 cuando son iguales
         self.root_dir = root_dir
         self.transform = transform
         self.mode = mode
@@ -33,6 +36,8 @@ class SiameseDataset(Dataset):
         s1 = self.data.iat[index, 0]
         s2 = self.data.iat[index, 1]
         l = self.data.iat[index, 2]
+        if self.mode != 'train':
+            th = self.data.iat[index, 3]
 
         # Lectura de prefalta y faltas
         PF = self.pre_falta
@@ -49,7 +54,10 @@ class SiameseDataset(Dataset):
             # Generamos una etiqueta con un escalón en el momento de la falta
             labels = self.labels[s2 - 1]
 
-        return PF, F, labels, l
+        if self.mode != 'train':
+            return PF, F, labels, l, th
+        else:
+            return PF, F, labels, l
 
     def getDataLoader(self, batch_size):
         self.trainDL = DataLoader(self,

@@ -19,7 +19,7 @@ class ContrastiveLoss(torch.nn.Module):
     def forward(self, output1, output2, label, y):
         euclidean_distance = F.pairwise_distance(output1, output2)
         loss_contrastive = (1-y) * torch.pow(euclidean_distance, 2) + \
-                           y * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
+                           self.gamma * y * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
         return torch.mean(loss_contrastive)
 
 class ContrastiveLossFF(torch.nn.Module):

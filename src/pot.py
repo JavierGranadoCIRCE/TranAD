@@ -116,7 +116,7 @@ def bf_search(score, label, start, end=None, step_num=1, display_freq=1, verbose
     return m, m_t
 
 
-def pot_eval(init_score, score, label, q=1e-5, level=0.02):
+def pot_eval(init_score, score, label, q=1e-5, level=0.0002):
     """
     Run POT method on given score.
     Args:
@@ -161,3 +161,20 @@ def pot_eval(init_score, score, label, q=1e-5, level=0.02):
         'threshold': pot_th,
         # 'pot-latency': p_latency
     }, np.array(pred)
+
+def pot_eval_siamese(score, label, q=1e-5, level=0.0002, pot_th=0.004, item=0):
+    #pred, p_latency = adjust_predicts(score, label, pot_th, calc_latency=True)
+    p_t = calc_point2point(score, label)
+    return {
+        'item': item,
+       'f1': p_t[0],
+       'precision': p_t[1],
+       'recall': p_t[2],
+       'TP': p_t[3],
+       'TN': p_t[4],
+       'FP': p_t[5],
+       'FN': p_t[6],
+       'ROC/AUC': p_t[7],
+       'threshold': pot_th,
+       # 'pot-latency': p_latency
+    }, np.array(score)

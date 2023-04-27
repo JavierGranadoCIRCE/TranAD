@@ -597,7 +597,7 @@ def train_siamese(epoch, model, data, optimizer, scheduler, device='cuda'):
 def inference_siamese(epoch, model, data, optimizer, scheduler, threshold=0.004, device='cuda'):
     # dataLD[0..2]
     # dataLD[0][batch, 4000, 3]
-    loss = ContrastiveLoss(gamma=1.2, margin=1)
+    loss = ContrastiveLoss(gamma=1, margin=1)
 
     pF = torch.tensor(data[epoch][0]).to(device)
     F = torch.tensor(data[epoch][1]).to(device)
@@ -617,16 +617,16 @@ def inference_siamese(epoch, model, data, optimizer, scheduler, threshold=0.004,
     optimizer.zero_grad()
     output1,output2 = model(window1, elem1, window2, elem2)
 
-    loss = calc_correlation(output1, output2)
+    #loss = calc_correlation(output1, output2)
 
-    loss1 = 1 - phase_syncrony(output1, output2)
+    #loss1 = 1 - phase_syncrony(output1, output2)
     loss2 = torch.abs((output1 - output2) / output1) + torch.sqrt((output1 - output2)**2)
 
     #loss2 = it.cumtrapz(loss2.data.cpu().numpy(), initial=0.0)
 
     score = (loss2 > threshold)*1.0
 
-    return (loss1, loss2[0]), (output1, output2), score[0]
+    return loss2[0], (output1, output2), score[0]
 
 
 if __name__ == '__main__':
@@ -641,7 +641,7 @@ if __name__ == '__main__':
     data = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
                           mode='train')
     data_test = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
-                          mode='_test_1')
+                          mode='_test_2')
     model, optimizer, optimContrastive, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
 
     model = model.to('cuda')
@@ -664,10 +664,24 @@ if __name__ == '__main__':
     if args.test:
         torch.zero_grad = True
         model.eval()
+        df = pd.DataFrame()
         for item in range(len(data_test)):
-            (loss1, loss2), (x1, x2), score = inference_siamese(item, model, data_test, optimizer=optimContrastive, scheduler=scheduler)
+            lossT, (x1, x2), score = inference_siamese(item, model, data_test, threshold=data_test[item][4],
+                                                       optimizer=optimContrastive, scheduler=scheduler)
 
             # 4. Plot curves
             if args.test:
                 #plotEspectrogramas(x1[0], x2[0])
-                plotterSiamese(f'{args.model}_{args.dataset}_{item}', x1[0], x2[0], loss1, loss2, data_test[item][2], score)
+                plotterSiamese(f'{args.model}_{args.dataset}_{item}', x1[0], x2[0], lossT,
+                               data_test[item][2], score, data_test[item][4])
+
+            # 5. Statistics
+            df1 = pd.DataFrame()
+            for canal in range(score.shape[1]):
+                result, pred = pot_eval_siamese(score.data.cpu().numpy()[:,canal], data_test[item][2][:,0], pot_th=data_test[item][4], item = item)
+                df1 = df1.append(result, ignore_index=True)
+                #df1 = pd.concat([df1, dfCanal], ignore_index=True)
+
+            df = pd.concat([df, df1], ignore_index=True)
+            print(df)
+            df.to_csv('plots/TransformerSiamesCirce_CIRCE/stats.csv')
