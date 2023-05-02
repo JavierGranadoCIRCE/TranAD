@@ -678,8 +678,13 @@ if __name__ == '__main__':
             # 5. Statistics
             df1 = pd.DataFrame()
             for canal in range(score.shape[1]):
-                result, pred = pot_eval_siamese(score.data.cpu().numpy()[:,canal], data_test[item][2][:,0], pot_th=data_test[item][4], item = item)
+                lt = lossT.data.cpu().numpy()[:, canal]
+                l, ls =np.zeros_like(lt), data_test[item][2][:,canal]
+                result, pred = pot_eval(lt, lt, ls, item=item)
                 df1 = df1.append(result, ignore_index=True)
+                df = pot_eval_improved(lt, ls, levels=20)
+                #result, pred = pot_eval_siamese(score.data.cpu().numpy()[:,canal], data_test[item][2][:,0], pot_th=data_test[item][4], item = item)
+                #df1 = df1.append(result, ignore_index=True)
                 #df1 = pd.concat([df1, dfCanal], ignore_index=True)
 
             df = pd.concat([df, df1], ignore_index=True)

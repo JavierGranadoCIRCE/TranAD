@@ -1,9 +1,8 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 
 from src.spot import SPOT
-from src.constants import *
-from sklearn.metrics import *
-import pandas as pd
+
 
 def calc_point2point(predict, actual):
     """
@@ -19,11 +18,7 @@ def calc_point2point(predict, actual):
     precision = TP / (TP + FP + 0.00001)
     recall = TP / (TP + FN + 0.00001)
     f1 = 2 * precision * recall / (precision + recall + 0.00001)
-    try:
-        roc_auc = roc_auc_score(actual, predict)
-    except:
-        roc_auc = 0
-    return f1, precision, recall, TP, TN, FP, FN, roc_auc
+    return f1, precision, recall, TP, TN, FP, FN
 
 
 def adjust_predicts(score, label,
@@ -48,7 +43,7 @@ def adjust_predicts(score, label,
     label = np.asarray(label)
     latency = 0
     if pred is None:
-        predict = score > threshold
+        predict = score < threshold
     else:
         predict = pred
     actual = label > 0.1
@@ -56,15 +51,15 @@ def adjust_predicts(score, label,
     anomaly_count = 0
     for i in range(len(score)):
         if actual[i] and predict[i] and not anomaly_state:
-                anomaly_state = True
-                anomaly_count += 1
-                for j in range(i, 0, -1):
-                    if not actual[j]:
-                        break
-                    else:
-                        if not predict[j]:
-                            predict[j] = True
-                            latency += 1
+            anomaly_state = True
+            anomaly_count += 1
+            for j in range(i, 0, -1):
+                if not actual[j]:
+                    break
+                else:
+                    if not predict[j]:
+                        predict[j] = True
+                        latency += 1
         elif not actual[i]:
             anomaly_state = False
         if anomaly_state:
@@ -117,93 +112,38 @@ def bf_search(score, label, start, end=None, step_num=1, display_freq=1, verbose
     return m, m_t
 
 
-def pot_eval(init_score, score, label, q=1e-5, level=0.02, item=0):
+def pot_eval(init_score, score, label, q=1e-3, level=0.02):
     """
     Run POT method on given score.
     Args:
         init_score (np.ndarray): The data to get init threshold.
-            it should be the anomaly score of train set.
+            For `OmniAnomaly`, it should be the anomaly score of train set.
         score (np.ndarray): The data to run POT method.
-            it should be the anomaly score of test set.
+            For `OmniAnomaly`, it should be the anomaly score of test set.
         label:
         q (float): Detection level (risk)
         level (float): Probability associated with the initial threshold t
     Returns:
         dict: pot result dict
     """
-    lms = lm[0]
-    while True:
-        try:
-            s = SPOT(q)  # SPOT object
-            s.fit(init_score, score)  # data import
-            s.initialize(level=lms, min_extrema=False, verbose=False)  # initialization step
-        except: lms = lms * 0.999
-        else: break
-    ret = s.run(dynamic=True)  # run
-    # print(len(ret['alarms']))
-    # print(len(ret['thresholds']))
-    pot_th = np.mean(ret['thresholds']) * lm[1]
-    # pot_th = np.percentile(score, 100 * lm[0])
-    # np.percentile(score, 100 * lm[0])
+    s = SPOT(q)  # SPOT object
+    s.fit(init_score, score)  # data import
+    s.initialize(level=level, min_extrema=True)  # initialization step
+    ret = s.run(dynamic=False)  # run
+    print(len(ret['alarms']))
+    print(len(ret['thresholds']))
+    pot_th = -np.mean(ret['thresholds'])
     pred, p_latency = adjust_predicts(score, label, pot_th, calc_latency=True)
-    # DEBUG - np.save(f'{debug}.npy', np.array(pred))
-    # DEBUG - print(np.argwhere(np.array(pred)))
     p_t = calc_point2point(pred, label)
-    # print('POT result: ', p_t, pot_th, p_latency)
+    print('POT result: ', p_t, pot_th, p_latency)
     return {
-        'item': item,
-        'f1': p_t[0],
-        'precision': p_t[1],
-        'recall': p_t[2],
-        'TP': p_t[3],
-        'TN': p_t[4],
-        'FP': p_t[5],
-        'FN': p_t[6],
-        'ROC/AUC': p_t[7],
-        'threshold': pot_th,
-        # 'pot-latency': p_latency
-    }, np.array(pred)
-
-def pot_eval_siamese(score, label, q=1e-5, level=0.0002, pot_th=0.004, item=0):
-    #pred, p_latency = adjust_predicts(score, label, pot_th, calc_latency=True)
-    p_t = calc_point2point(score, label)
-    return {
-        'item': item,
-       'f1': p_t[0],
-       'precision': p_t[1],
-       'recall': p_t[2],
-       'TP': p_t[3],
-       'TN': p_t[4],
-       'FP': p_t[5],
-       'FN': p_t[6],
-       'ROC/AUC': p_t[7],
-       'threshold': pot_th,
-       # 'pot-latency': p_latency
-    }, np.array(score)
-
-def pot_eval_improved(loss, label, levels=10):
-    maximo = np.max(loss)
-    level = maximo/20
-    th=0
-    df = pd.DataFrame()
-    while (th < maximo):
-        score = (loss > th)*1.0
-        TP = np.count_nonzero(score[np.nonzero(label)])
-        TN = np.count_nonzero(score[np.nonzero(label==0)]==0)
-        FP = np.count_nonzero(score[np.nonzero(label==0)])
-        FN = np.count_nonzero(score[np.nonzero(label)]==0)
-        precision = TP / (TP + FP + 0.00001)
-        recall = TP / (TP + FN + 0.00001)
-        f1 = 2 * precision * recall / (precision + recall + 0.00001)
-        data = {'f1': f1,
-                 'precision': precision,
-                 'recall': recall,
-                 'TP': TP,
-                 'TN': TN,
-                 'FP': FP,
-                 'FN': FN,
-                 'threshold': th}
-        df = df.append(data, ignore_index=True)
-        th = th + level
-
-    return df
+        'pot-f1': p_t[0],
+        'pot-precision': p_t[1],
+        'pot-recall': p_t[2],
+        'pot-TP': p_t[3],
+        'pot-TN': p_t[4],
+        'pot-FP': p_t[5],
+        'pot-FN': p_t[6],
+        'pot-threshold': pot_th,
+        'pot-latency': p_latency
+    }
