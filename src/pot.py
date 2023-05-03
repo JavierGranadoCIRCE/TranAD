@@ -181,29 +181,31 @@ def pot_eval_siamese(score, label, q=1e-5, level=0.0002, pot_th=0.004, item=0):
        # 'pot-latency': p_latency
     }, np.array(score)
 
-def pot_eval_improved(loss, label, levels=10):
+def compute_threshold(loss, label, levels=10):
     maximo = np.max(loss)
     level = maximo/20
     th=0
-    df = pd.DataFrame()
+
+    datos = pd.DataFrame()
+
     while (th < maximo):
         score = (loss > th)*1.0
         TP = np.count_nonzero(score[np.nonzero(label)])
         TN = np.count_nonzero(score[np.nonzero(label==0)]==0)
         FP = np.count_nonzero(score[np.nonzero(label==0)])
         FN = np.count_nonzero(score[np.nonzero(label)]==0)
-        precision = TP / (TP + FP + 0.00001)
-        recall = TP / (TP + FN + 0.00001)
-        f1 = 2 * precision * recall / (precision + recall + 0.00001)
-        data = {'f1': f1,
-                 'precision': precision,
-                 'recall': recall,
-                 'TP': TP,
+        TPmax = np.count_nonzero(label)
+        FPmax = np.count_nonzero(label==0)
+
+        data = pd.DataFrame([{'TP': TP,
                  'TN': TN,
                  'FP': FP,
                  'FN': FN,
-                 'threshold': th}
-        df = df.append(data, ignore_index=True)
+                 'score': TP/TPmax + (1-FP/FPmax),
+                 'threshold': th}])
+        datos = pd.concat([datos, data], ignore_index=True)
         th = th + level
 
-    return df
+    threshold = datos['threshold'][datos['score'].idxmax()]
+    pos = datos['score'].idxmax()
+    return datos, threshold, pos

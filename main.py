@@ -666,27 +666,43 @@ if __name__ == '__main__':
         model.eval()
         df = pd.DataFrame()
         for item in range(len(data_test)):
+            print(f'{color.HEADER}First iteration: Sample {item}{color.ENDC}')
             lossT, (x1, x2), score = inference_siamese(item, model, data_test, threshold=data_test[item][4],
                                                        optimizer=optimContrastive, scheduler=scheduler)
 
-            # 4. Plot curves
+
+            # 4. Statistics
+            print(f'{color.HEADER}Computing threshold ...{color.ENDC}')
+            df1 = pd.DataFrame()
+            for canal in range(score.shape[1]):
+                lt = lossT.data.cpu().numpy()[:, canal]
+                l, ls =np.zeros_like(lt), data_test[item][2][:,canal]
+
+                dfDatos, th, pos = compute_threshold(lt, ls, levels=20)
+                df1 = pd.concat([df1, pd.DataFrame([th])], ignore_index=True)
+
+            th = df1.mean()
+            print(f'{color.HEADER}Executing with the optimum threshold {th.item()}...{color.ENDC}')
+            lossT, (x1, x2), score = inference_siamese(item, model, data_test, threshold=th.item(),
+                                                       optimizer=optimContrastive, scheduler=scheduler)
+
+            # 5. Plot curves
+            print(f'{color.HEADER}Printing curves...{color.ENDC}')
             if args.test:
                 #plotEspectrogramas(x1[0], x2[0])
                 plotterSiamese(f'{args.model}_{args.dataset}_{item}', x1[0], x2[0], lossT,
                                data_test[item][2], score, data_test[item][4])
 
-            # 5. Statistics
-            df1 = pd.DataFrame()
+            # 6. Grabbing data
+            print(f'{color.HEADER}Grabbing data for sample {item}...{color.ENDC}')
             for canal in range(score.shape[1]):
-                lt = lossT.data.cpu().numpy()[:, canal]
-                l, ls =np.zeros_like(lt), data_test[item][2][:,canal]
-                result, pred = pot_eval(lt, lt, ls, item=item)
-                df1 = df1.append(result, ignore_index=True)
-                df = pot_eval_improved(lt, ls, levels=20)
-                #result, pred = pot_eval_siamese(score.data.cpu().numpy()[:,canal], data_test[item][2][:,0], pot_th=data_test[item][4], item = item)
-                #df1 = df1.append(result, ignore_index=True)
-                #df1 = pd.concat([df1, dfCanal], ignore_index=True)
+                result, pred = pot_eval_siamese(score.data.cpu().numpy()[:,canal],
+                                                data_test[item][2][:,0],
+                                                pot_th=th.item(),
+                                                item = item)
+                df = pd.concat([df, pd.DataFrame([result])], ignore_index=True)
 
-            df = pd.concat([df, df1], ignore_index=True)
-            print(df)
-            df.to_csv('plots/TransformerSiamesCirce_CIRCE/stats.csv')
+            print(f'{color.BLUE}-----------------------------{color.ENDC}')
+
+        print(f'{color.GREEN}Executing with the optimum threshold...{color.ENDC}')
+        df.to_csv('plots/TransformerSiamesCirce_CIRCE/stats.csv')
