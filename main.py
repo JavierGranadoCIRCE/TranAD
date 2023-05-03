@@ -704,5 +704,5 @@ if __name__ == '__main__':
 
             print(f'{color.BLUE}-----------------------------{color.ENDC}')
 
-        print(f'{color.GREEN}Executing with the optimum threshold...{color.ENDC}')
+        print(f'{color.GREEN}Grabbing ALL DATA...{color.ENDC}')
         df.to_csv('plots/TransformerSiamesCirce_CIRCE/stats.csv')
