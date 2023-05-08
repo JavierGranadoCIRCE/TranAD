@@ -164,7 +164,7 @@ def pot_eval(init_score, score, label, q=1e-5, level=0.02, item=0):
         # 'pot-latency': p_latency
     }, np.array(pred)
 
-def pot_eval_siamese(score, label, q=1e-5, level=0.0002, pot_th=0.004, item=0):
+def pot_eval_siamese(score, label, q=1e-5, level=0.0002, pot_th=0.004, item=0, code=0):
     #pred, p_latency = adjust_predicts(score, label, pot_th, calc_latency=True)
     p_t = calc_point2point(score, label)
     return {
@@ -178,6 +178,7 @@ def pot_eval_siamese(score, label, q=1e-5, level=0.0002, pot_th=0.004, item=0):
        'FN': p_t[6],
        'ROC/AUC': p_t[7],
        'threshold': pot_th,
+       'code': code
        # 'pot-latency': p_latency
     }, np.array(score)
 

@@ -4,6 +4,8 @@ from src.constants import *
 import pandas as pd
 import numpy as np
 import torch
+import scipy as sp
+from scipy.spatial import distance
 from scipy.signal import hilbert, butter, filtfilt
 from scipy.fftpack import fft,fftfreq,rfft,irfft,ifft
 
@@ -148,3 +150,86 @@ def phase_syncrony(prefalta, falta):
 		phase[:,i] = 1-np.sin(np.abs(al1-al2)/2)
 
 	return torch.tensor(phase)
+
+def dtw(s, t):
+	n, m = len(s), len(t)
+	dtw_matrix = np.zeros((n+1, m+1))
+	for i in range(n+1):
+		for j in range(m+1):
+			dtw_matrix[i, j] = np.inf
+	dtw_matrix[0, 0] = 0
+
+	for i in range(1, n+1):
+		for j in range(1, m+1):
+			cost = abs(s[i-1] - t[j-1])
+			# take last min from a square box
+			last_min = np.min([dtw_matrix[i-1, j], dtw_matrix[i, j-1], dtw_matrix[i-1, j-1]])
+			dtw_matrix[i, j] = cost + last_min
+	return dtw_matrix
+
+def energy(prefalta, falta, s):
+	pdPrefalta = pd.DataFrame(prefalta[0,:,:].detach().numpy())
+	pdFalta = pd.DataFrame(falta[0,:,:].detach().numpy())
+
+	size = pdFalta.shape[0]
+
+	energy = np.abs(pdFalta.pow(2).rolling(window=s).sum() - pdPrefalta.pow(2).rolling(window=s).sum())
+	energy = energy.fillna(0).to_numpy().reshape([1,size,3])
+
+	return torch.tensor(energy)
+
+def diference_ponderate(prefalta, falta):
+	pdPrefalta = pd.DataFrame(prefalta[0,:,:].detach().numpy())
+	pdFalta = pd.DataFrame(falta[0,:,:].detach().numpy())
+
+	Prefaltadesplazmax = pdPrefalta
+
+	Faltadesplazmax = pdFalta
+
+	#Desplazamos los valores que están por debajo de 0.5 para que todos esten por encima
+	umbral = 0.5
+	Prefaltadesplazmax.loc[Prefaltadesplazmax[0] < umbral, 0] = (umbral - Prefaltadesplazmax[0])+umbral
+	Prefaltadesplazmax.loc[Prefaltadesplazmax[1] < umbral, 1] = (umbral - Prefaltadesplazmax[1])+umbral
+	Prefaltadesplazmax.loc[Prefaltadesplazmax[2] < umbral, 2] = (umbral - Prefaltadesplazmax[2])+umbral
+
+	Faltadesplazmax.loc[Faltadesplazmax[0] < umbral, 0] = (umbral - Faltadesplazmax[0])+umbral
+	Faltadesplazmax.loc[Faltadesplazmax[1] < umbral, 1] = (umbral - Faltadesplazmax[1])+umbral
+	Faltadesplazmax.loc[Faltadesplazmax[2] < umbral, 2] = (umbral - Faltadesplazmax[2])+umbral
+
+	#hacemos la diferencia entre las dos señales
+	diff = np.abs(Prefaltadesplazmax - Faltadesplazmax)
+	#calculamos la amplitud media entre las dos señales - Se hace la media elemento a elemento
+	media = np.abs(Prefaltadesplazmax + Faltadesplazmax)/2
+	#realzamos las medias a partir de un cierto umbral y realzamos la diferencia
+	umbralmedia = 0.65
+	media.loc[media[0] < umbralmedia, 0] = media[0]*100
+	media.loc[media[1] < umbralmedia, 1] = media[1]*100
+	media.loc[media[2] < umbralmedia, 2] = media[2]*100
+
+	media.loc[media[0] > umbralmedia, 0] = media[0]*0.01
+	media.loc[media[1] > umbralmedia, 1] = media[1]*0.01
+	media.loc[media[2] > umbralmedia, 2] = media[2]*0.01
+
+	diffponderate = (diff / media)
+
+	umbraldiff = 7
+	#Ponemos el resultado entre "0" y "1"
+	diffponderate.loc[diffponderate[0] < umbraldiff, 0] = 0
+	diffponderate.loc[diffponderate[1] < umbraldiff, 1] = 0
+	diffponderate.loc[diffponderate[2] < umbraldiff, 2] = 0
+
+	diffponderate.loc[diffponderate[0] >= umbraldiff, 0] = 1
+	diffponderate.loc[diffponderate[1] >= umbraldiff, 1] = 1
+	diffponderate.loc[diffponderate[2] >= umbraldiff, 2] = 1
+
+	diffponderate = torch.tensor(diffponderate.values)
+	return torch.tensor(diffponderate)
+
+def compute_distance (prefalta, falta, metric):
+	pdPrefalta = (pd.DataFrame(prefalta[0,:,:].detach().numpy()))
+	pdFalta = pd.DataFrame(falta[0,:,:].detach().numpy())
+	#eucliddist = np.zeros((4000,3))
+	eucliddist = distance.cdist(pdPrefalta, pdFalta, 'metric', p=10)
+	#eucliddist[1] = distance.pdist(pdPrefalta[1], pdFalta[1])
+	#eucliddist[2] = distance.pdist(pdPrefalta[2], pdFalta[2])
+	return torch.tensor(eucliddist)

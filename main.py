@@ -615,12 +615,14 @@ def inference_siamese(epoch, model, data, optimizer, scheduler, threshold=0.004,
     elem2 = window2[-1, :, :].view(1, local_bs2, 3)
 
     optimizer.zero_grad()
-    output1,output2 = model(window1, elem1, window2, elem2)
+    output1, output2 = model(window1, elem1, window2, elem2)
 
     #loss = calc_correlation(output1, output2)
 
     #loss1 = 1 - phase_syncrony(output1, output2)
     loss2 = torch.abs((output1 - output2) / output1) + torch.sqrt((output1 - output2)**2)
+
+    loss2 = energy(output1.cpu(), output2.cpu(), 11)
 
     #loss2 = it.cumtrapz(loss2.data.cpu().numpy(), initial=0.0)
 
@@ -629,7 +631,7 @@ def inference_siamese(epoch, model, data, optimizer, scheduler, threshold=0.004,
     return loss2[0], (output1, output2), score[0]
 
 
-if __name__ == '__main__':
+def CIRCE_mode():
     # def backprop(epoch, model, data, dataO,
     # 			 optimizer, optimizer2,
     # 			 scheduler1, scheduler2,
@@ -638,10 +640,10 @@ if __name__ == '__main__':
     # 			 fase = 1):
 
     # 1. Prepare data
-    data = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
+    data = SiameseDataset('processed/CIRCE/faltas_8', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
                           mode='train')
-    data_test = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
-                          mode='_test_2')
+    data_test = SiameseDataset('processed/CIRCE/faltas', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
+                               mode='_test_all')
     model, optimizer, optimContrastive, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
 
     model = model.to('cuda')
@@ -667,7 +669,7 @@ if __name__ == '__main__':
         df = pd.DataFrame()
         for item in range(len(data_test)):
             print(f'{color.HEADER}First iteration: Sample {item}{color.ENDC}')
-            lossT, (x1, x2), score = inference_siamese(item, model, data_test, threshold=data_test[item][4],
+            lossT, (x1, x2), score = inference_siamese(item, model, data_test, threshold=0.008240703442447072,
                                                        optimizer=optimContrastive, scheduler=scheduler)
 
 
@@ -691,18 +693,30 @@ if __name__ == '__main__':
             if args.test:
                 #plotEspectrogramas(x1[0], x2[0])
                 plotterSiamese(f'{args.model}_{args.dataset}_{item}', x1[0], x2[0], lossT,
-                               data_test[item][2], score, data_test[item][4])
+                               data_test[item][2], score, th.item(), data_test[item][4])
 
             # 6. Grabbing data
             print(f'{color.HEADER}Grabbing data for sample {item}...{color.ENDC}')
             for canal in range(score.shape[1]):
-                result, pred = pot_eval_siamese(score.data.cpu().numpy()[:,canal],
-                                                data_test[item][2][:,0],
+                result, pred = pot_eval_siamese(score.data.cpu().numpy()[:, canal],
+                                                data_test[item][2][:, 0],
                                                 pot_th=th.item(),
-                                                item = item)
+                                                item=item,
+                                                code=data_test[item][4])
                 df = pd.concat([df, pd.DataFrame([result])], ignore_index=True)
 
             print(f'{color.BLUE}-----------------------------{color.ENDC}')
 
         print(f'{color.GREEN}Grabbing ALL DATA...{color.ENDC}')
         df.to_csv('plots/TransformerSiamesCirce_CIRCE/stats.csv')
+
+
+def TranAD_mode():
+    a=1
+
+
+if __name__ == '__main__':
+    if args.modo == 'CIRCE':
+        CIRCE_mode()
+    if args.modo == 'TranAD':
+        TranAD_mode()

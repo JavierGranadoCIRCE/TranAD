@@ -52,7 +52,7 @@ def plotEspectrogramas(s1, s2):
 	ax2.specgram(s2[:,0].data.cpu().numpy(), Fs=20, cmap="rainbow")
 	plt.show()
 
-def plotterSiamese(name, y_true, y_pred, ascore, labels, score, umbral):
+def plotterSiamese(name, y_true, y_pred, ascore, labels, score, umbral, code):
 	if 'TranAD' or 'TranCIRCE' in name: y_true = torch.roll(y_true, 1, 0)
 	pdf = PdfPages(f'plots/TransformerSiamesCirce_CIRCE/{name}.pdf')
 	time = np.arange(4000)/100
@@ -66,7 +66,7 @@ def plotterSiamese(name, y_true, y_pred, ascore, labels, score, umbral):
 		vUmbral = np.ones_like(s)*umbral
 		fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 		ax1.set_ylabel('Value')
-		ax1.set_title(f'Dimension = {dim}')
+		ax1.set_title(f'Fault = {code} / Dimension = {dim}')
 		# if dim == 0: np.save(f'true{dim}.npy', y_t); np.save(f'pred{dim}.npy', y_p); np.save(f'ascore{dim}.npy', a_s)
 		ax1.plot(smooth(y_t), linewidth=0.2, label='True')
 		ax1.plot(smooth(y_p), '-', alpha=0.6, linewidth=0.3, label='Predicted')

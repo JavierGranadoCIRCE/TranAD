@@ -28,10 +28,10 @@ parser.add_argument('--epochs',
 					required=True,
 					default=50,
 					help='Num epochs for training')
-parser.add_argument('--item2evaluate',
-					metavar='-i',
-					type=int,
+parser.add_argument('--modo',
+					metavar='-mo',
+					type=str,
 					required=True,
 					default=8,
-					help='Pair example to be evaluated')
+					help='Execute or train with CIRCESiamese or TranAD')
 args = parser.parse_args()
