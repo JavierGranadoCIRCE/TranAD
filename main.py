@@ -622,7 +622,7 @@ def inference_siamese(epoch, model, data, optimizer, scheduler, threshold=0.004,
     #loss1 = 1 - phase_syncrony(output1, output2)
     loss2 = torch.abs((output1 - output2) / output1) + torch.sqrt((output1 - output2)**2)
 
-    loss2 = energy(output1.cpu(), output2.cpu(), 11)
+    #loss2 = energy_pond(output1.cpu(), output2.cpu(), 10)
 
     #loss2 = it.cumtrapz(loss2.data.cpu().numpy(), initial=0.0)
 
@@ -640,7 +640,7 @@ def CIRCE_mode():
     # 			 fase = 1):
 
     # 1. Prepare data
-    data = SiameseDataset('processed/CIRCE/faltas_8', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
+    data = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
                           mode='train')
     data_test = SiameseDataset('processed/CIRCE/faltas', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
                                mode='_test_all')
