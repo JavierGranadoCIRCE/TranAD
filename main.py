@@ -31,8 +31,8 @@ import time
 
 import os
 
-os.environ["PATH"] += os.pathsep + 'C:/Users/jelia/anaconda3/envs/GANs/Library/bin/graphviz/'
-
+os.environ["PATH"] += os.pathsep + 'C:/Users/jgranado/AppData/Local/miniconda3/lib/site-packages/graphviz'
+os.environ["PATH"] += os.pathsep + 'C:/Users/jgranado/AppData/Local/Package/sPythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0/LocalCache/local-packages/Python311/site-packages/dgl'
 
 def convert_to_windows(data, model):
 	windows = [];
