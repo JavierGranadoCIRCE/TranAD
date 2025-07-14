@@ -879,3 +879,4 @@ if __name__ == '__main__':
 	if args.modo == 'TranAD':
 		TranAD_mode()
 #prueba commit versión
+#prueba commit versión
