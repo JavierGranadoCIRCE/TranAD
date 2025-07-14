@@ -22,8 +22,8 @@ class LSTM_Univariate(nn.Module):
 		self.lstm = nn.ModuleList([nn.LSTM(1, self.n_hidden) for i in range(feats)])
 
 	def forward(self, x):
-		hidden = [(torch.rand(1, 1, self.n_hidden, dtype=torch.float64), 
-			torch.randn(1, 1, self.n_hidden, dtype=torch.float64)) for i in range(self.n_feats)]
+		hidden = [(torch.rand(1, 1, self.n_hidden, dtype=torch.float64),
+				   torch.randn(1, 1, self.n_hidden, dtype=torch.float64)) for i in range(self.n_feats)]
 		outputs = []
 		for i, g in enumerate(x):
 			multivariate_output = []
@@ -44,14 +44,14 @@ class Attention(nn.Module):
 		self.n_feats = feats
 		self.n_window = 5 # MHA w_size = 5
 		self.n = self.n_feats * self.n_window
-		self.atts = [ nn.Sequential( nn.Linear(self.n, feats * feats), 
-				nn.ReLU(True))	for i in range(1)]
+		self.atts = [ nn.Sequential( nn.Linear(self.n, feats * feats),
+									 nn.ReLU(True))	for i in range(1)]
 		self.atts = nn.ModuleList(self.atts)
 
 	def forward(self, g):
 		for at in self.atts:
 			ats = at(g.view(-1)).reshape(self.n_feats, self.n_feats)
-			g = torch.matmul(g, ats)		
+			g = torch.matmul(g, ats)
 		return g, ats
 
 ## LSTM_AD Model
@@ -209,7 +209,7 @@ class MSCRED(nn.Module):
 			ConvLSTM(1, 32, (3, 3), 1, True, True, False),
 			ConvLSTM(32, 64, (3, 3), 1, True, True, False),
 			ConvLSTM(64, 128, (3, 3), 1, True, True, False),
-			]
+		]
 		)
 		self.decoder = nn.Sequential(
 			nn.ConvTranspose2d(128, 64, (3, 3), 1, 1), nn.ReLU(True),

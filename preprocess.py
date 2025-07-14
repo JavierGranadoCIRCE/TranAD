@@ -13,12 +13,12 @@ datasets = ['synthetic', 'SMD', 'SWaT', 'SMAP', 'MSL', 'WADI', 'MSDS', 'UCR', 'M
 wadi_drop = ['2_LS_001_AL', '2_LS_002_AL','2_P_001_STATUS','2_P_002_STATUS']
 
 def load_and_save(category, filename, dataset, dataset_folder):
-    temp = np.genfromtxt(os.path.join(dataset_folder, category, filename),
-                         dtype=np.float64,
-                         delimiter=',')
-    print(dataset, category, filename, temp.shape)
-    np.save(os.path.join(output_folder, f"SMD/{dataset}_{category}.npy"), temp)
-    return temp.shape
+	temp = np.genfromtxt(os.path.join(dataset_folder, category, filename),
+						 dtype=np.float64,
+						 delimiter=',')
+	print(dataset, category, filename, temp.shape)
+	np.save(os.path.join(output_folder, f"SMD/{dataset}_{category}.npy"), temp)
+	return temp.shape
 
 def load_and_save2(category, filename, dataset, dataset_folder, shape):
 	temp = np.zeros(shape)
@@ -83,8 +83,8 @@ def load_data(dataset):
 			dnum, vals = int(vals[0]), vals[-3:]
 			vals = [int(i) for i in vals]
 			temp = np.genfromtxt(os.path.join(dataset_folder, filename),
-								dtype=np.float64,
-								delimiter=',')
+								 dtype=np.float64,
+								 delimiter=',')
 			min_temp, max_temp = np.min(temp), np.max(temp)
 			temp = (temp - min_temp) / (max_temp - min_temp)
 			train, test = temp[:vals[0]], temp[vals[0]:]
@@ -206,7 +206,7 @@ def load_data(dataset):
 		test['Time'] = pd.to_datetime(test['Date'] + ' ' + test['Time'])
 		labels = test.copy(deep = True)
 		for i in test.columns.tolist()[3:]: labels[i] = 0
-		for i in ['Start Time', 'End Time']: 
+		for i in ['Start Time', 'End Time']:
 			ls[i] = ls[i].astype(str)
 			ls[i] = pd.to_datetime(ls['Date'] + ' ' + ls[i])
 		for index, row in ls.iterrows():
@@ -214,8 +214,8 @@ def load_data(dataset):
 			matched = []
 			for i in test.columns.tolist()[3:]:
 				for tm in to_match:
-					if tm in i: 
-						matched.append(i); break			
+					if tm in i:
+						matched.append(i); break
 			st, et = str(row['Start Time']), str(row['End Time'])
 			labels.loc[(labels['Time'] >= st) & (labels['Time'] <= et), matched] = 1
 		train, test, labels = convertNumpy(train), convertNumpy(test), convertNumpy(labels)
