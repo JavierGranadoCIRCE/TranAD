@@ -17,6 +17,7 @@ import torch.nn as nn
 from time import time
 from pprint import pprint
 # from beepy import beep
+<<<<<<< HEAD
 from torchviz import make_dot
 import dagshub
 import random
@@ -33,6 +34,9 @@ import os
 
 os.environ["PATH"] += os.pathsep + 'C:/Users/jgranado/AppData/Local/miniconda3/lib/site-packages/graphviz'
 os.environ["PATH"] += os.pathsep + 'C:/Users/jgranado/AppData/Local/Package/sPythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0/LocalCache/local-packages/Python311/site-packages/dgl'
+=======
+#
+>>>>>>> 0907df0 (Guardando cambios locales antes del rebase)
 
 def convert_to_windows(data, model):
 	windows = [];
