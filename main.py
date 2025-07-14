@@ -17,10 +17,6 @@ import torch.nn as nn
 from time import time
 from pprint import pprint
 # from beepy import beep
-<<<<<<< HEAD
-from torchviz import make_dot
-import dagshub
-import random
 
 from src.data import SiameseDataset
 from src.contrastiveLoss import ContrastiveLoss, ContrastiveLossFF
