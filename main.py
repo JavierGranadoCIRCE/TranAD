@@ -878,3 +878,4 @@ if __name__ == '__main__':
 		CIRCE_mode()
 	if args.modo == 'TranAD':
 		TranAD_mode()
+#prueba commit versión
