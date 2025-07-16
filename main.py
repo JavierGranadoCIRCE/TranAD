@@ -15,10 +15,10 @@ from src.merlin import *
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 import torch.nn as nn
 from time import time
-from pprint import pprint
+# from pprint import pprint
 # from beepy import beep
-from torchviz import make_dot
-import dagshub
+# from torchviz import make_dot
+# import dagshub
 import random
 
 from src.data import SiameseDataset
@@ -641,7 +641,7 @@ def CIRCE_mode():
 
     # 1. Prepare data
     data = SiameseDataset('processed/CIRCE/faltas_1', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
-                          mode='train')
+                           mode='train')
     data_test = SiameseDataset('processed/CIRCE/faltas', 'data/CIRCE/ResumenBloqueSimulaciones1-200.csv', './',
                                mode='_test_all')
     model, optimizer, optimContrastive, scheduler, epoch, accuracy_list = load_model(args.model, data.faltas.shape[2])
