@@ -182,31 +182,70 @@ def pot_eval_siamese(score, label, q=1e-5, level=0.0002, pot_th=0.004, item=0, c
        # 'pot-latency': p_latency
     }, np.array(score)
 
+# def compute_threshold(loss, label, levels=10):
+#     maximo = np.max(loss)
+#     level = maximo/20
+#     th=0
+#
+#     datos = pd.DataFrame()
+#
+#     while (th < maximo):
+#         score = (loss > th)*1.0
+#         TP = np.count_nonzero(score[np.nonzero(label)])
+#         TN = np.count_nonzero(score[np.nonzero(label==0)]==0)
+#         FP = np.count_nonzero(score[np.nonzero(label==0)])
+#         FN = np.count_nonzero(score[np.nonzero(label)]==0)
+#         TPmax = np.count_nonzero(label)
+#         FPmax = np.count_nonzero(label==0)
+#
+#         data = pd.DataFrame([{'TP': TP,
+#                  'TN': TN,
+#                  'FP': FP,
+#                  'FN': FN,
+#                  'score': TP/TPmax + (1-FP/FPmax),
+#                  'threshold': th}])
+#         datos = pd.concat([datos, data], ignore_index=True)
+#         th = th + level
+#
+#     threshold = datos['threshold'][datos['score'].idxmax()]
+#     pos = datos['score'].idxmax()
+#     return datos, threshold, pos
+
 def compute_threshold(loss, label, levels=10):
     maximo = np.max(loss)
-    level = maximo/20
-    th=0
+    # if maximo == 0 or maximo != 0 or len(loss) == 0:
+    #     # Casos degenerados: devolver valores por defecto
+    #     datos = pd.DataFrame([{
+    #         'TP': 0, 'TN': 0, 'FP': 0, 'FN': 0,
+    #         'score': 0.0, 'threshold': 0.0
+    #     }])
+    #     return datos, 0.0, 0
 
+    level = maximo / levels
+    th = 0
     datos = pd.DataFrame()
-
-    while (th < maximo):
-        score = (loss > th)*1.0
+    maximo = 1.0
+    while th < maximo:
+        score = (loss > th) * 1.0
         TP = np.count_nonzero(score[np.nonzero(label)])
-        TN = np.count_nonzero(score[np.nonzero(label==0)]==0)
-        FP = np.count_nonzero(score[np.nonzero(label==0)])
-        FN = np.count_nonzero(score[np.nonzero(label)]==0)
+        TN = np.count_nonzero(score[np.nonzero(label == 0)] == 0)
+        FP = np.count_nonzero(score[np.nonzero(label == 0)])
+        FN = np.count_nonzero(score[np.nonzero(label)] == 0)
         TPmax = np.count_nonzero(label)
-        FPmax = np.count_nonzero(label==0)
+        FPmax = np.count_nonzero(label == 0)
 
-        data = pd.DataFrame([{'TP': TP,
-                 'TN': TN,
-                 'FP': FP,
-                 'FN': FN,
-                 'score': TP/TPmax + (1-FP/FPmax),
-                 'threshold': th}])
+        score_val = (TP / TPmax if TPmax > 0 else 0) + (1 - FP / FPmax if FPmax > 0 else 1)
+
+        data = pd.DataFrame([{
+            'TP': TP,
+            'TN': TN,
+            'FP': FP,
+            'FN': FN,
+            'score': score_val,
+            'threshold': th
+        }])
         datos = pd.concat([datos, data], ignore_index=True)
         th = th + level
 
     threshold = datos['threshold'][datos['score'].idxmax()]
-    pos = datos['score'].idxmax()
-    return datos, threshold, pos
+    return datos, threshold, datos['score'].idxmax()

@@ -11,6 +11,8 @@ Created on Mon Dec 12 10:08:16 2016
 from math import log, floor
 
 import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['DejaVu Serif']  # Alternativa fiable en casi todos los sistemas
 import numpy as np
 import pandas as pd
 import tqdm
